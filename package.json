@@ -15,6 +15,14 @@
     "derivation",
     "reproducibility"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Blake-John/dsh-scientist.git"
+  },
+  "homepage": "https://github.com/Blake-John/dsh-scientist#readme",
+  "bugs": {
+    "url": "https://github.com/Blake-John/dsh-scientist/issues"
+  },
   "exports": {
     "./skills-provider.mjs": "./skills-provider.mjs",
     "./lit-tools.mjs": "./lit-tools.mjs",
@@ -42,10 +50,14 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build:patch": "node scripts/build-patch.mjs",
     "lit": "node scripts/lit.mjs",
     "check": "node scripts/build-patch.mjs --check && node scripts/check-patch.mjs && node scripts/test-skills-provider.mjs && node scripts/test-lit-core.mjs && node scripts/test-lit-tools.mjs && node scripts/test-pdf-tools.mjs && node scripts/test-lit-lib.mjs && python3 scripts/validate.py",
-    "check:live": "node scripts/test-lit-tools.mjs --live"
+    "check:live": "node scripts/test-lit-tools.mjs --live",
+    "prepublishOnly": "npm run check"
   }
 }

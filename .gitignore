@@ -9,3 +9,5 @@ node_modules/
 # 本地临时
 *.log
 .DS_Store
+.npm-cache/
+.pack/

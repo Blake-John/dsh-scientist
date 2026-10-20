@@ -9,3 +9,5 @@ tmp/
 *.log
 .DS_Store
 .gitignore
+.npm-cache/
+.pack/
