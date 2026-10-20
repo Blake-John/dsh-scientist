@@ -1,0 +1,11 @@
+# 开发/运行时产物
+__pycache__/
+*.pyc
+.pyc
+.lit-cache/
+.pdf-assets/
+.pdf-render/
+tmp/
+*.log
+.DS_Store
+.gitignore

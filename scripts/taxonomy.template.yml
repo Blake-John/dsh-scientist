@@ -1,0 +1,52 @@
+# 文献库受控词表（lit-lib 会强制校验）
+#
+# keywords：主题概念，一篇最多 8 个，必须在下面登记过（支持 parent 自动视为派生）
+# tag_namespaces：标签命名空间，标签必须写成 <namespace>/<value>
+# 新增关键词时改这里 —— 这是文献库唯一的"词表真相"
+
+keywords:
+  transformer:
+    children: [self-attention, multi-head-attention, positional-encoding]
+  diffusion-model:
+    children: [score-based, ddpm, flow-matching]
+  language-model:
+    children: [pretraining, scaling-law, instruction-tuning]
+  graph-neural-network:
+    children: [message-passing]
+  optimization:
+    children: [adam, learning-rate-schedule, regularization]
+  representation-learning:
+    children: [contrastive-learning, embedding]
+  evaluation:
+    children: [benchmark, ablation, statistical-significance]
+  molecular-generation:
+    children: [conformer-generation, drug-design]
+  density-functional-theory:
+    children: [exchange-correlation, pseudopotential]
+  numerical-method:
+    children: [finite-element, monte-carlo, spectral-method]
+
+# 命名空间：标签的第一段
+tag_namespaces:
+  method:
+    description: 方法家族，如 method/attention、method/gnn
+  task:
+    description: 任务或数据集，如 task/machine-translation、task/qsar
+  era:
+    description: 年代分段，如 era/2017、era/2024
+  status:
+    description: 库内状态，如 status/core、status/background、status/excluded
+  to-cite:
+    description: 待引用位置，如 to-cite/ch1、to-cite/related-work
+  collection:
+    description: 归属集合（替代独立 collections 字段），如 collection/thesis-ch2
+  dataset:
+    description: 涉及的数据集，如 dataset/imagenet
+
+# 字段枚举（lit-lib check 会校验）
+enums:
+  venue_type: [journal, conference, preprint, book, thesis, report]
+  read_status: [unread, abstract, skimmed, read_full]
+  role: [method, baseline, survey, dataset, theory, application]
+  influence_tier: [landmark, core, supporting, peripheral]
+  confidence: [high, medium, low]

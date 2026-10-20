@@ -1,0 +1,6 @@
+name: 科学家模式
+description: >-
+  通用科研 agent：领域调研（landscape 测绘）、文献检索与精读（lit_* 4 个原生工具：Crossref / arXiv / PubMed / Europe PMC / LibGen）、
+  专业推导（sympy 符号推导 + 数值/量纲交叉验证 + LaTeX 成文），并复用 dsh-science 的 ReAct 研究循环、
+  版本化工件与溯源、子代理并行分轨与评审机制。面向数理、物理/工程/材料、AI/计算科学等跨学科研究。
+order: 10
