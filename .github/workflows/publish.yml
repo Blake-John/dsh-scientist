@@ -1,0 +1,92 @@
+name: publish
+
+# 触发方式：推 v* 标签，或手动运行
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance（可信发布）需要
+
+jobs:
+  publish:
+    name: 发布到 npm
+    runs-on: ubuntu-latest
+    env:
+      # 配了 NPM_TOKEN 就用 token；没配则走 npm 可信发布（OIDC）
+      HAS_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: 校验 tag 与 package.json 版本一致
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            echo "package.json=$PKG  tag=$TAG"
+            if [ "$PKG" != "$TAG" ]; then
+              echo "::error::tag ($TAG) 与 package.json ($PKG) 不一致，拒绝发布"
+              exit 1
+            fi
+          else
+            echo "手动触发，按 package.json 的 $PKG 发布"
+          fi
+
+      - name: 全量校验
+        run: npm run check
+
+      - name: 包内容守卫（必须有 bundle 标记与全部技能）
+        run: |
+          npm pack --pack-destination /tmp >/dev/null
+          TGZ=$(ls /tmp/dsh-scientist-*.tgz)
+          tar -xzOf "$TGZ" package/package.json > /tmp/pkg.json
+          node -e '
+            const p = require("/tmp/pkg.json");
+            const fail = (m) => { console.error("::error::" + m); process.exit(1); };
+            if (!p.dsh?.bundle?.patch) fail("包内缺少 dsh.bundle.patch");
+            if (p.license !== "Apache-2.0") fail("license 应为 Apache-2.0，实际 " + p.license);
+            console.log("✓ bundle patch:", p.dsh.bundle.patch, "| license:", p.license, "| version:", p.version);
+          '
+          SKILLS=$(tar -tzf "$TGZ" | grep -c "^package/skills/[^/]*/SKILL.md$" || true)
+          echo "✓ 技能数: $SKILLS"
+          if [ "$SKILLS" -ne 16 ]; then
+            echo "::error::技能数应为 16，实际 $SKILLS"
+            exit 1
+          fi
+
+      - name: 该版本是否已存在
+        id: probe
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          if npm view "dsh-scientist@$VER" version >/dev/null 2>&1; then
+            echo "已是 $VER，跳过发布"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 发布（NPM_TOKEN）
+        if: steps.probe.outputs.exists != 'true' && env.HAS_TOKEN == 'true'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 发布（npm 可信发布 / OIDC，无需 token）
+        if: steps.probe.outputs.exists != 'true' && env.HAS_TOKEN != 'true'
+        run: npm publish --provenance --access public
+
+      - name: 发布后验证
+        if: steps.probe.outputs.exists != 'true'
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          sleep 5
+          echo "registry 上的 latest: $(npm view dsh-scientist version)"
+          npm view "dsh-scientist@$VER" dsh.bundle.patch
+          npm view "dsh-scientist@$VER" license

@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: 校验（Node ${{ matrix.node }}）
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 环境自检
+        run: |
+          node -v
+          python3 -V
+          echo "package.json 版本: $(node -p "require('./package.json').version")"
+
+      # 本包零运行时依赖，不需要 npm ci；直接跑自带的 11 项校验
+      - name: 全量校验（11 项）
+        run: npm run check
+
+      - name: 打包冒烟
+        run: |
+          npm pack --pack-destination /tmp >/dev/null
+          tar -tzf /tmp/dsh-scientist-*.tgz | wc -l
+
+      - name: bundle 标记必须存在
+        run: |
+          tar -xzOf /tmp/dsh-scientist-*.tgz package/package.json > /tmp/pkg.json
+          node -e '
+            const p = require("/tmp/pkg.json");
+            if (!p.dsh?.bundle?.patch) { console.error("::error::包内缺少 dsh.bundle.patch，不是 DSH bundle"); process.exit(1); }
+            console.log("✓ dsh.bundle.patch =", p.dsh.bundle.patch);
+          '
+
+      - name: 入口文件必须可解析
+        run: |
+          mkdir -p /tmp/install/node_modules
+          tar -xzf /tmp/dsh-scientist-*.tgz -C /tmp/install/node_modules
+          mv /tmp/install/node_modules/package /tmp/install/node_modules/dsh-scientist
+          cd /tmp/install
+          node -e '
+            const { createRequire } = require("module");
+            const r = createRequire(process.cwd() + "/x.js");
+            for (const s of ["dsh-scientist/skills-provider.mjs", "dsh-scientist/lit-tools.mjs", "dsh-scientist/pdf-tools.mjs"]) {
+              r.resolve(s);
+              console.log("✓", s);
+            }
+          '
