@@ -46,6 +46,7 @@
     "skills",
     "skills-provider.mjs",
     "vault-core.mjs",
+    "vault-loop-core.mjs",
     "vault-record.mjs",
     "vault-study.mjs"
   ],

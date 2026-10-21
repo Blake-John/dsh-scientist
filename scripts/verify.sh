@@ -35,6 +35,7 @@ run "vault-study 测试（状态机 / 归档 / 决策 / 评审 / 回退 / 论断
 run "vault CLI 测试（index / list / show / diff / prune / export）" node scripts/test-vault-cli.mjs
 run "cite-check --deep 测试（全链校验）" node scripts/test-cite-check-deep.mjs
 run "挂载冒烟（包名解析 + apply + 工具契约）" node scripts/smoke-vault.mjs
+run "约定 loop 测试（状态机 / 出口校验 / CLI）" node scripts/test-vault-loop.mjs
 
 if [[ "${1:-}" == "--live" ]]; then
   run "lit-tools 联网实测（lit_doi / lit_search / lit_bib / lit_pdf ×2）" node scripts/test-lit-tools.mjs --live

@@ -8,7 +8,8 @@
  *   vault diff <name> [--from N] [--to N]
  *   vault deprecate <name> [--version N] [--reason 文本]
   vault prune [--keep N | --deprecated-only] [--dry-run]
- *   vault export [--out DIR]    导出 RO-Crate 子集（可交给审稿人/存档）
+ *   vault loop <子命令>                 约定 loop 的记账与关闭（见下）
+  vault export [--out DIR]    导出 RO-Crate 子集（可交给审稿人/存档）
  *
  * 设计依据：Sandve 2013 R9（文字连到结果）、RO-Crate 1.1（内容寻址与 CreateAction）。
  */
@@ -32,6 +33,18 @@ import {
   writeJsonAtomic,
 } from '../vault-core.mjs'
 import { renderIndex } from '../vault-study.mjs'
+import {
+  abortLoop,
+  activeLoop,
+  closeLoop,
+  createLoop,
+  listLoops,
+  LOOP_STATE_LABEL,
+  noteLoop,
+  readLoop,
+  renderLoop,
+  verifyExit,
+} from '../vault-loop-core.mjs'
 
 const run = promisify(execFile)
 const RECORDS = 'research/records'
@@ -468,6 +481,113 @@ async function cmdExport(root, flags) {
   console.log('  说明：这是 RO-Crate 子集（工件与执行），不含原始数据本体')
 }
 
+// ── loop 子命令组 ───────────────────────────────────────────────────────────
+
+const splitList = (value) =>
+  typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : []
+
+async function cmdLoop(root, positional, flags) {
+  const sub = positional[1]
+  const rest = positional.slice(2)
+  switch (sub) {
+    case 'new': {
+      const [kind, ...argParts] = rest
+      if (!kind) throw vaultErr('ERR_BAD_ARGS', '用法：vault loop new <kind> <arg> [--requires …] [--checks …]')
+      const loop = await createLoop(root, {
+        kind,
+        arg: argParts.join(' '),
+        requires: splitList(flags.requires),
+        checks: splitList(flags.checks),
+        workMin: flags['work-min'] === undefined ? 0 : Number(flags['work-min']),
+        maxNudges: flags['max-nudges'] === undefined ? undefined : Number(flags['max-nudges']),
+        skill: typeof flags.skill === 'string' ? flags.skill : null,
+      })
+      console.log(loop.id)
+      return
+    }
+    case 'list': {
+      const loops = await listLoops(root, typeof flags.status === 'string' ? { status: flags.status } : {})
+      if (flags.json) {
+        console.log(JSON.stringify(loops, null, 2))
+        return
+      }
+      if (!loops.length) {
+        console.log('（没有 loop）')
+        return
+      }
+      for (const loop of loops) {
+        console.log(`${loop.id.padEnd(42)} ${(LOOP_STATE_LABEL[loop.status] ?? loop.status).padEnd(5)} ${loop.work?.length ?? 0} 条记录`)
+      }
+      const running = loops.filter((l) => l.status === 'running').length
+      console.log(`\n共 ${loops.length} 个${running ? `，其中 ${running} 个进行中` : ''}`)
+      return
+    }
+    case 'show': {
+      if (!rest[0]) throw vaultErr('ERR_BAD_ARGS', '用法：vault loop show <id>')
+      const loop = await readLoop(root, rest[0])
+      if (flags.json) {
+        console.log(JSON.stringify(loop, null, 2))
+        return
+      }
+      console.log(renderLoop(loop))
+      const { ok, failures } = await verifyExit(root, loop)
+      console.log(ok ? '\n出口契约：已满足（可 close）' : `\n出口契约：未满足\n  · ${failures.join('\n  · ')}`)
+      return
+    }
+    case 'note': {
+      if (!rest[0]) throw vaultErr('ERR_BAD_ARGS', '用法：vault loop note <id> "内容"')
+      const text = rest.slice(1).join(' ')
+      const loop = await noteLoop(root, rest[0], text)
+      console.log(`✓ 已记账（${loop.work.length} 条）`)
+      return
+    }
+    case 'close': {
+      if (!rest[0]) throw vaultErr('ERR_BAD_ARGS', '用法：vault loop close <id> [--failed --reason "…"]')
+      const failed = flags.failed === true
+      const reason = typeof flags.reason === 'string' ? flags.reason : ''
+      try {
+        const loop = await closeLoop(root, rest[0], { failed, reason })
+        console.log(`✓ loop ${loop.id} 已关闭（${LOOP_STATE_LABEL[loop.status]}）`)
+        if (loop.status === 'closed') {
+          console.log(`  产物校验通过 · work ${loop.work.length} 条`)
+        } else {
+          console.log(`  原因：${loop.failReason}`)
+        }
+        return
+      } catch (error) {
+        if (error.code === 'ERR_EXIT_UNMET') {
+          console.error(`✗ ${error.message}`)
+          console.error('  补完后重试，或声明失败：vault loop close <id> --failed --reason "…"')
+          process.exitCode = 1
+          return
+        }
+        throw error
+      }
+    }
+    case 'abort': {
+      if (!rest[0]) throw vaultErr('ERR_BAD_ARGS', '用法：vault loop abort <id> [--reason "…"]')
+      const loop = await abortLoop(root, rest[0], typeof flags.reason === 'string' ? flags.reason : '')
+      console.log(`✓ loop ${loop.id} 已中止`)
+      return
+    }
+    case 'active': {
+      const loop = await activeLoop(root)
+      console.log(loop ? renderLoop(loop) : '（没有进行中的 loop）')
+      return
+    }
+    default:
+      throw vaultErr('ERR_BAD_ARGS', `未知子命令 loop ${sub ?? ''}\n${LOOP_USAGE}`)
+  }
+}
+
+const LOOP_USAGE = `  vault loop new <kind> <arg> [--requires a,b] [--checks c,d] [--work-min N] [--max-nudges N]
+  vault loop list [--status running] [--json]
+  vault loop show <id> [--json]
+  vault loop note <id> "内容"
+  vault loop close <id> [--failed --reason "…"]
+  vault loop abort <id> [--reason "…"]
+  vault loop active`
+
 // ── main ────────────────────────────────────────────────────────────────────
 
 const USAGE = `vault —— 科研记录运维
@@ -477,6 +597,7 @@ const USAGE = `vault —— 科研记录运维
   vault diff <name> [--from N] [--to N] [--patch]
   vault deprecate <name> [--version N] [--reason 文本]
   vault prune [--keep N | --deprecated-only] [--dry-run]
+  vault loop <子命令>                 约定 loop 的记账与关闭（见下）
   vault export [--out DIR]
 公共参数：--root PATH`
 
@@ -504,6 +625,8 @@ async function main() {
     case 'deprecate':
       if (!positional[1]) throw vaultErr('ERR_BAD_ARGS', '用法：vault deprecate <name> [--version N] [--reason 文本]')
       return await cmdDeprecate(root, positional[1], flags)
+    case 'loop':
+      return await cmdLoop(root, positional, flags)
     case 'export':
       return await cmdExport(root, flags)
     default:
