@@ -92,6 +92,12 @@ Sandve 2013 可复现十条、Schnell 2015 计算实验记录本十条）。
 配套 CLI（不占模型上下文）：`vault index | list | show | diff | deprecate | prune | export`；
 `cite-check --deep` 做全链校验（无文献支撑的假设、无证据的论断、悬空引用）。
 
+装到 PATH（一次装四个命令，之后可在任意项目目录直接调用）：
+
+```bash
+bash scripts/install-cli.sh          # → ~/.local/bin/{lit,lit-lib,cite-check,vault}
+```
+
 ## 安装（bundle 包，一条命令）
 
 ```bash
@@ -187,7 +193,7 @@ scientist/
     test-pdf-tools.mjs  PDF 工具测试（现场生成样例 PDF，离线）
     test-lit-core.mjs   lit-core 离线单测
     test-lit-tools.mjs  工具结构测试（--live 走联网）
-    install-cli.sh    把 cite-check 链到 PATH
+    install-cli.sh    把 lit / lit-lib / cite-check / vault 链到 PATH
     verify.sh         一键验收（结构 + loader + roster + cite-check + MCP）
     validate.py       结构校验
     check-loader.mjs  用真实 entryListSchema 解析组合

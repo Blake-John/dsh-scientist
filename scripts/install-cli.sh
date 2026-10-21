@@ -1,32 +1,48 @@
 #!/usr/bin/env bash
-# 把 cite-check 装成 PATH 上的命令（默认 ~/.local/bin/cite-check 符号链接）。
+# 把本包的命令行工具链接到 PATH（默认 ~/.local/bin）。
+#
+#   lit          文献检索 / DOI 元数据 / BibTeX / 取全文
+#   lit-lib      受控词表的文献库（入库、校验、检索、导出）
+#   cite-check   引用与可复现性检查（--deep 做研究链路全链校验）
+#   vault        科研记录运维（index/list/show/diff/deprecate/prune/export）
 #
 # 用法：bash scripts/install-cli.sh [目标目录]
-# 卸载：rm ~/.local/bin/cite-check
+# 卸载：rm ~/.local/bin/{lit,lit-lib,cite-check,vault}
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${1:-$HOME/.local/bin}"
-TARGET="$BIN_DIR/cite-check"
-# 链向包内脚本：link: 安装时包目录即源目录；npm 安装时包目录在 node_modules 下，
-# 两种情况下这个路径都是稳定的（脚本随包走）。
-SOURCE="$DIR/scripts/cite-check.mjs"
-LIT_SOURCE="$DIR/scripts/lit.mjs"
-LIB_SOURCE="$DIR/scripts/lit-lib.mjs"
+
+# 命令名 → 包内脚本（随包发布；link: 与 npm 安装两种情况下路径都稳定）
+CLI_NAMES=(lit lit-lib cite-check vault)
+CLI_PATHS=(
+  scripts/lit.mjs
+  scripts/lit-lib.mjs
+  scripts/cite-check.mjs
+  scripts/vault.mjs
+)
 
 mkdir -p "$BIN_DIR"
-chmod +x "$SOURCE"
-ln -sfn "$SOURCE" "$TARGET"
+for i in "${!CLI_NAMES[@]}"; do
+  name="${CLI_NAMES[$i]}"
+  rel="${CLI_PATHS[$i]}"
+  src="$DIR/$rel"
+  if [ ! -f "$src" ]; then
+    echo "✗ 缺少 $rel，跳过 $name" >&2
+    continue
+  fi
+  chmod +x "$src"
+  ln -sfn "$src" "$BIN_DIR/$name"
+  echo "已链接：$BIN_DIR/$name -> $src"
+done
 
-ln -sfn "$LIT_SOURCE" "$BIN_DIR/lit"
-chmod +x "$LIT_SOURCE"
-
-echo "已链接：$TARGET -> $SOURCE"
-echo "已链接：$BIN_DIR/lit -> $LIT_SOURCE"
-ln -sfn "$LIB_SOURCE" "$BIN_DIR/lit-lib"
-chmod +x "$LIB_SOURCE"
-echo "已链接：$BIN_DIR/lit-lib -> $LIB_SOURCE"
 case ":$PATH:" in
-  *":$BIN_DIR:"*) echo "PATH 已包含 $BIN_DIR，直接运行：cite-check --root ." ;;
-  *) echo "注意：$BIN_DIR 不在 PATH 里，请加入 PATH 或用绝对路径 $TARGET" ;;
+  *":$BIN_DIR:"*)
+    echo
+    echo "PATH 已包含 $BIN_DIR，可直接运行：vault list / cite-check --deep / lit --help"
+    ;;
+  *)
+    echo
+    echo "注意：$BIN_DIR 不在 PATH 里，请把它加入 PATH（或把 $BIN_DIR 换成已在 PATH 的目录）。"
+    ;;
 esac
