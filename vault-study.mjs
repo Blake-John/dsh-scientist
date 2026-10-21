@@ -238,6 +238,49 @@ async function writeIndex(root, study) {
 }
 
 /**
+ * 项目目录约定（与 skills/science-project-setup 的表格一致）。
+ * 注意：envs/ 与 reviews/ 在项目根，不在 research/ 下。
+ */
+export const PROJECT_DIRS = [
+  'research/records',
+  'research/loops',
+  'literature/notes',
+  'experiments',
+  'analyses',
+  'figures',
+  'manuscript',
+  'reviews',
+  'data',
+  'envs',
+  'reports',
+  'derivations',
+]
+
+const BIB_HEADER = `% references.bib —— 由 lit_bib 追加；也可手工维护\n% 校验：cite-check --root .\n\n`
+
+/** 建全目录与最小脚手架文件；返回实际创建/已存在的清单 */
+export async function scaffoldProject(root) {
+  const created = []
+  for (const dir of PROJECT_DIRS) {
+    const abs = withinRoot(root, dir)
+    const existed = existsSync(abs)
+    await mkdir(abs, { recursive: true })
+    if (!existed) created.push(`${dir}/`)
+  }
+  const bib = withinRoot(root, 'literature/references.bib')
+  if (!existsSync(bib)) {
+    await writeFile(bib, BIB_HEADER, 'utf8')
+    created.push('literature/references.bib')
+  }
+  const dataNote = withinRoot(root, 'data/README.md')
+  if (!existsSync(dataNote)) {
+    await writeFile(dataNote, '# 原始数据\n\n本目录不入 git（体积大/含受限数据）。用 data-inventory 技能登记来源与哈希。\n', 'utf8')
+    created.push('data/README.md')
+  }
+  return created
+}
+
+/**
  * 供命令层复用：不存在则建（可标记 autoCreated/origin），存在则可更新 title/question。
  * 与 study_init 工具共用同一份 schema，避免两套初始化逻辑漂移。
  */
@@ -257,9 +300,7 @@ export async function ensureStudy(root, { title, question, autoCreated = false, 
       }
       return { study: existing, created: false }
     }
-    for (const dir of ['research/records', 'research/reviews', 'research/envs']) {
-      await mkdir(withinRoot(root, dir), { recursive: true })
-    }
+    const createdPaths = await scaffoldProject(root)
     const stamp = nowISO()
     const study = {
       schema: SCHEMA,
@@ -277,7 +318,8 @@ export async function ensureStudy(root, { title, question, autoCreated = false, 
       claims: [],
     }
     await writeJsonAtomic(studyPath(root), study)
-    return { study, created: true }
+    await writeIndex(root, study)
+    return { study, created: true, createdPaths }
   })
 }
 
@@ -294,9 +336,7 @@ async function cmdInit(args, exec) {
         '下一步：study_state 看全貌，或 study_hypothesis 登记第一条假设。',
       ].join('\n')
     }
-    for (const dir of ['research/records', 'research/reviews', 'research/envs']) {
-      await mkdir(withinRoot(root, dir), { recursive: true })
-    }
+    const createdPaths = await scaffoldProject(root)
     const stamp = nowISO()
     const study = {
       schema: SCHEMA,
@@ -314,9 +354,12 @@ async function cmdInit(args, exec) {
     await pushHistory(root, study, { action: 'init', detail: `研究「${study.title}」创建`, phase: 'literature' })
     await writeJsonAtomic(studyPath(root), study)
     await writeIndex(root, study)
+    await writeIndex(root, study)
     return [
       `✓ 已创建研究：${study.title}`,
-      `  清单 research/study.json · 目录 research/{records,reviews,envs}`,
+      `  清单 research/study.json`,
+      `  目录 ${createdPaths.filter((p) => p.endsWith('/')).join(' ') || '（已存在）'}`,
+      createdPaths.some((p) => p.includes('references.bib')) ? '  书目 literature/references.bib' : '  书目（已存在）',
       study.question.text ? `  核心问题：${study.question.text}` : '  （未填核心问题，可用 study_init --question 补，或在 study_hypothesis 里给）',
       '',
       '建议顺序：literature（lit_search/lit_pdf/lit-lib）→ study_hypothesis → study_experiment → 跑代码 → record_save → study_finding。',

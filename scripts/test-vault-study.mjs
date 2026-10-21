@@ -39,6 +39,14 @@ try {
   // ── init ──
   const init1 = await call('study_init', { root, title: 'PINN 求解器', question: 'PINN 在小样本下能否达到 FEM 精度？' })
   ok(/已创建研究/.test(init1), `init 输出：${init1.slice(0,80)}`)
+  // 脚手架：目录与最小文件都要建好（不能靠模型猜）
+  for (const dir of ['literature/notes','experiments','analyses','figures','manuscript','reviews','data','envs','reports','derivations','research/records','research/loops']) {
+    const st = await import('node:fs/promises').then((m) => m.stat(join(root, dir)).catch(() => null))
+    ok(st?.isDirectory(), `应创建目录 ${dir}`)
+  }
+  ok((await import('node:fs/promises').then((m) => m.readFile(join(root, 'literature/references.bib'), 'utf8').catch(() => ''))).includes('references.bib'), '应创建 references.bib')
+  ok((await import('node:fs/promises').then((m) => m.readFile(join(root, 'research/INDEX.md'), 'utf8').catch(() => ''))).length > 0, '应生成 INDEX.md')
+
   const study0 = JSON.parse(await readFile(join(root, 'research/study.json'), 'utf8'))
   ok(study0.loop.phase === 'literature', '初始阶段 literature')
   ok(study0.loop.iteration === 1, '初始迭代 1')

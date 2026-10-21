@@ -19,7 +19,7 @@
 
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -93,6 +93,30 @@ export async function activeLoop(root) {
   return running[0] ?? null
 }
 
+// ── 挂起（非 loop 命令执行期间不拦）────────────────────────────────────────
+//
+// 场景：一个 survey loop 还在跑，用户敲 /study-init 或 /status。
+// 这些命令本身不该被 loop 的强制层劫持，所以命令会写一个短暂的挂起标记；
+// 模型一旦对 loop 记账或关闭，标记被清除，强制层恢复。
+
+const suspendPath = (root) => join(root, 'research', 'loops', '.suspend')
+
+export async function suspendEnforcement(root, ttlMs = 120000) {
+  await mkdir(dirname(suspendPath(root)), { recursive: true })
+  await writeFile(suspendPath(root), new Date(Date.now() + ttlMs).toISOString(), 'utf8')
+}
+
+export async function isSuspended(root) {
+  const until = await readFile(suspendPath(root), 'utf8').catch(() => null)
+  if (!until) return false
+  const t = Date.parse(until.trim())
+  return Number.isFinite(t) && Date.now() < t
+}
+
+export async function clearSuspension(root) {
+  await rm(suspendPath(root), { force: true })
+}
+
 // ── 创建与更新 ──────────────────────────────────────────────────────────────
 
 const stamp = () => {
@@ -157,6 +181,7 @@ async function mutateLoop(root, id, fn) {
 export async function noteLoop(root, id, note) {
   const text = String(note ?? '').trim()
   if (!text) throw vaultErr('ERR_BAD_ARGS', 'note 不能为空')
+  await clearSuspension(root)
   return await mutateLoop(root, id, (loop) => {
     if (TERMINAL_STATES.includes(loop.status)) {
       throw vaultErr('ERR_LOOP_CLOSED', `loop ${id} 已结束（${loop.status}），不能再记账`)
@@ -337,6 +362,7 @@ export async function closeLoop(root, id, { failed = false, reason = '' } = {}) 
     })
   }
 
+  await clearSuspension(root)
   const { ok, failures } = await verifyExit(root, loop)
   if (!ok) {
     await mutateLoop(root, id, (target) => {
@@ -353,6 +379,35 @@ export async function closeLoop(root, id, { failed = false, reason = '' } = {}) 
     target.exit.lastFailure = null
     return target
   })
+}
+
+// ── 契约翻译（给模型看的具体要求）─────────────────────────────────────────
+
+export function describeRequirement(spec) {
+  const [kind, ...rest] = String(spec).split(':')
+  switch (kind) {
+    case 'file': return `产出 \`${rest.join(':')}\``
+    case 'glob': return `至少一个匹配 ${rest.join(':')} 的文件`
+    case 'contains': {
+      const [path, labels] = [rest[0], rest.slice(1).join(':')]
+      return `\`${path}\` 包含：${labels.split('|').join('、')}`
+    }
+    case 'min-citations': return `\`${rest[0]}\` 至少 ${rest[1]} 条编号引用`
+    case 'bib-entry': return `references.bib 里有 \`${rest.join(':')}\` 条目`
+    case 'executable': return `\`${rest.join(':')}\` 是可执行脚本`
+    case 'cite-check': return 'cite-check 无错误'
+    case 'cite-check-deep': return 'cite-check --deep 无错误'
+    case 'reviews-since-open': return '本次 loop 开始后新增一条 study_review 记录'
+    default: return spec
+  }
+}
+
+/** 把 loop 的出口契约翻译成逐条可执行的要求（不跑校验，纯声明） */
+export function describeContract(loop) {
+  const items = [...(loop.exit?.requires ?? []), ...(loop.exit?.checks ?? [])].map(describeRequirement)
+  const workMin = loop.exit?.workMin ?? 0
+  if (workMin) items.push(`work 记录 ≥${workMin} 条（当前 ${(loop.work ?? []).length} 条，用 loop_note 记）`)
+  return items
 }
 
 // ── 展示 ────────────────────────────────────────────────────────────────────

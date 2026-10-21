@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply, reminderText, nudgeText, touchesLoopDir } from '../vault-enforce.mjs'
-import { createLoop, closeLoop, listLoops, noteLoop } from '../vault-loop-core.mjs'
+import { createLoop, closeLoop, isSuspended, listLoops, noteLoop, suspendEnforcement } from '../vault-loop-core.mjs'
 
 const problems = []
 const ok = (cond, msg) => { if (!cond) problems.push(msg) }
@@ -47,8 +47,8 @@ try {
   await closeLoop(root, loop.id).catch(() => {})   // 制造 lastFailure
   const withLoop = await hooks['agent/pre-step']({ agent, messages: [] }, nextDefault)
   ok(withLoop.messages.length === 2, `应追加一条提醒，实际 ${withLoop.messages.length}`)
-  ok(/出口契约未满足/.test(withLoop.messages[1].content[0].text), '提醒含缺项')
-  ok(/缺产物/.test(withLoop.messages[1].content[0].text), '提醒列出缺产物')
+  ok(/出口契约/.test(withLoop.messages[1].content[0].text), '提醒含契约')
+  ok(/产出 `reports\/x\.md`/.test(withLoop.messages[1].content[0].text), `提醒列出具体产物：${withLoop.messages[1].content[0].text}`)
 
   // next() 被拒绝时不注入
   const rejected = await hooks['agent/pre-step']({ agent, messages: [] }, async () => ({ kind: 'reject' }))
@@ -76,6 +76,21 @@ try {
   const afterStall = await hooks['agent/pre-step']({ agent, messages: [] }, nextDefault)
   ok(afterStall.messages.length === 1, 'stalled 后不注入')
 
+  // ── 挂起：非 loop 命令执行期间不拦 ──
+  const l5 = await createLoop(root, { kind: 'survey', arg: 'suspend', requires: ['file:reports/s.md'] })
+  await suspendEnforcement(root, 60_000)
+  ok(await isSuspended(root), '挂起标记已写入')
+  const beforeSuspend = sent.length
+  await hooks['agent/turn-stopping']({ agent, turn: 9 })
+  ok(sent.length === beforeSuspend, '挂起期间不拦停')
+  const suspendedPre = await hooks['agent/pre-step']({ agent, messages: [] }, nextDefault)
+  ok(suspendedPre.messages.length === 1, '挂起期间不注入')
+  // 记账会清除挂起并恢复强制
+  await noteLoop(root, l5.id, '回到 loop')
+  ok(!(await isSuspended(root)), '记账后挂起被清除')
+  await hooks['agent/turn-stopping']({ agent, turn: 10 })
+  ok(sent.length === beforeSuspend + 1, '恢复后重新拦停')
+
   // ── guard ──
   const guard = guards[0]
   ok(guard({ name: 'write', arguments: { file_path: `${root}/research/loops/x.json` } }) !== undefined, 'write 改 loop 文件应被拦')
@@ -87,8 +102,10 @@ try {
   ok(guard({ name: 'bash', arguments: { command: 'ls reports' } }) === undefined, '无关命令不应被拦')
 
   // ── 文本工具 ──
-  ok(/还差/.test(nudgeText({ id: 'l', exit: { lastFailure: { failures: ['缺产物：x'] } } })), 'nudgeText 含缺项')
-  ok(reminderText({ id: 'l', exit: { lastFailure: null } }) === null, '无缺项时 reminder 为空')
+  ok(/需要满足/.test(nudgeText({ id: 'l', kind: 'survey', arg: 'x', exit: { requires: ['file:reports/x.md'], workMin: 2 }, work: [] })), 'nudgeText 含契约')
+  ok(/产出 `reports\/x\.md`/.test(nudgeText({ id: 'l', kind: 'survey', arg: 'x', exit: { requires: ['file:reports/x.md'], workMin: 2 }, work: [] })), 'nudgeText 给出具体产物')
+  ok(/work 记录 ≥2 条（当前 0 条/.test(nudgeText({ id: 'l', kind: 'survey', arg: 'x', exit: { requires: [], workMin: 2 }, work: [] })), 'nudgeText 给出 work 差距')
+  ok(reminderText({ id: 'l', exit: { requires: [], workMin: 0 } }) === null, '无契约项时 reminder 为空')
   ok(touchesLoopDir('bash', { command: 'echo 1 > research/loops/a.json' }) === true, 'touchesLoopDir 写')
   ok(touchesLoopDir('bash', { command: 'cat research/loops/a.json' }) === false, 'touchesLoopDir 读')
 

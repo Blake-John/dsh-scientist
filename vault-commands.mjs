@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { readJson, resolveRoot, slugify } from './vault-core.mjs'
-import { createLoop, listLoops, readLoop } from './vault-loop-core.mjs'
+import { createLoop, listLoops, readLoop, suspendEnforcement } from './vault-loop-core.mjs'
 import { ensureStudy } from './vault-study.mjs'
 
 export const name = 'dsh-scientist-vault-commands'
@@ -369,11 +369,14 @@ export function apply(ctx) {
           autoCreated: false,
           origin: '/study-init',
         })
+        // 挂起强制层：用户在做别的事，不该被进行中的 loop 劫持
+        await suspendEnforcement(root, 180000)
+
         // 注入一句确认，让用户看到助手回应（否则只有一个不显眼的命令节点）
         invocation.agent.followup(
           userMessage(
             created
-              ? `（/study-init 已完成）研究「${study.title}」已建立，清单在 research/study.json。用一句话向用户确认，并建议下一步（/survey <方向> 或 study_hypothesis）。不要重复清单内容。`
+              ? `（/study-init 已完成）研究「${study.title}」已建立，目录与脚手架已按约定创建好（含 literature/ reports/ derivations/ experiments/ figures/ manuscript/ analyses/ data/ envs/ reviews/）。用一两句话向用户确认，并建议下一步（/survey <方向> 或 study_hypothesis）。不要逐条罗列目录。`
               : `（/study-init 已更新）标题「${study.title}」，核心问题：${study.question?.text || '（未设）'}。用一句话确认。`,
           ),
         )
@@ -404,6 +407,8 @@ export function apply(ctx) {
           return { kind: 'success', text: `✓ 已中止 ${loop.id}` }
         }
 
+        // /status 期间不拦停：用户只是查进度
+        await suspendEnforcement(root, 120000)
         const digest = await renderStatus(root)
         if (flags.json) {
           const loops = await listLoops(root)

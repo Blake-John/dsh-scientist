@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { resolveRoot } from './vault-core.mjs'
-import { activeLoop, bumpNudge, stallLoop } from './vault-loop-core.mjs'
+import { activeLoop, bumpNudge, describeContract, isSuspended, stallLoop } from './vault-loop-core.mjs'
 
 export const name = 'dsh-scientist-vault-enforce'
 export const inject = ['tools']
@@ -47,26 +47,17 @@ export function touchesLoopDir(toolName, args) {
 }
 
 export function nudgeText(loop) {
-  const failures = loop.exit?.lastFailure?.failures ?? []
-  const lines = [`（loop ${loop.id} 尚未完成，不能就此结束）`]
-  if (failures.length) {
-    lines.push('还差：')
-    for (const item of failures) lines.push(`· ${item}`)
-  } else {
-    lines.push('还差：出口契约尚未校验通过（产物或 work 记录不足）')
-  }
+  const items = describeContract(loop)
+  const lines = [`（loop ${loop.id}「${loop.kind} ${loop.arg ?? ''}」尚未完成，不能就此结束）`, '需要满足：']
+  for (const item of items) lines.push(`· ${item}`)
   lines.push('继续完成；判断做不成时调用 loop_close(failed=true, reason="…")')
   return lines.join('\n')
 }
 
 export function reminderText(loop) {
-  const failures = loop.exit?.lastFailure?.failures ?? []
-  if (!failures.length) return null
-  return [
-    `（loop ${loop.id} 出口契约未满足）`,
-    ...failures.map((item) => `· ${item}`),
-    '完成后调用 loop_close()',
-  ].join('\n')
+  const items = describeContract(loop)
+  if (!items.length) return null
+  return [`（loop ${loop.id}「${loop.kind}」的出口契约）`, ...items.map((item) => `· ${item}`), '完成后调用 loop_close()'].join('\n')
 }
 
 export function apply(ctx) {
@@ -94,6 +85,7 @@ export function apply(ctx) {
     if (decision.kind === 'reject') return decision
     const root = await rootFor(agent)
     if (!root) return decision
+    if (await isSuspended(root)) return decision
     const loop = await activeLoop(root).catch(() => null)
     if (!loop) return decision
     const reminder = reminderText(loop)
@@ -105,6 +97,7 @@ export function apply(ctx) {
   ctx.on('agent/turn-stopping', async ({ agent }) => {
     const root = await rootFor(agent)
     if (!root) return
+    if (await isSuspended(root)) return
     const loop = await activeLoop(root).catch(() => null)
     if (!loop) return
     if ((loop.nudges ?? 0) >= (loop.maxNudges ?? 3)) {
