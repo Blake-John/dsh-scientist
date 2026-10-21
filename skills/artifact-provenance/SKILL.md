@@ -28,7 +28,7 @@ whenToUse: 生成了值得保留/复现/引用的结果时；写论文引用数�
    - `inputs`：输入文件/数据（含版本，如 `data/raw/SRR123.fastq.gz`）
    - `notes`：参数、软件版本、注意事项
 2. 修改同一分析后再次 `record_save` → 自动生成 v2，旧版本保留可回溯。
-3. 版本间切换：`vault show <name> v<N>` 查看历史；复现：`record_reproduce <name>`。
+3. 查历史与差异：`vault show <name> --version N`、`vault diff <name>`；复现指引：`record_reproduce`。
 
 ## 溯源记录什么（缺一不可）
 

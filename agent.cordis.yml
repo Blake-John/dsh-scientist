@@ -6,11 +6,14 @@
 # 每个选择该 preset 的会话通过 scope 父关系加入，工具与人格按 agent 隔离。
 #
 # 与 dsh-science 官方「科学模式」preset 的关系：
-#   - 不重复挂载 research-loop / artifact-registry / remote-compute 三个引擎 ——
-#     dsh-science 以 bundle 形式装在 profile 层（cordis.patch.yml），它们的工具
-#     （research_* / artifact_* 等）可能是 HOST 平面的；本 preset 自带 study_*/record_*，
-#     再挂一次会在同一 registration scope 里重复注册同名工具。若将来从 profile 移除
-#     dsh-science bundle，本 preset 会失去这三组工具（见 README「依赖」）。
+#   - **本 preset 不依赖 dsh-science**：研究状态用 study_*（9 个），工件与运行用
+#     record_*（3 个），全部自研、零外部 bundle 依赖。
+#   - 若同一 profile 里**仍装着 dsh-science**，它的 research_* / artifact_* / remote_*
+#     会以 HOST 平面全局可见，且与我们的 7 个技能重名（artifact-provenance /
+#     conda-environments / data-inventory / parallel-delegation / research-loop /
+#     science-project-setup / scientific-reviewer）——模型会分不清该用哪套。
+#     建议装本包时从 profile 移除 dsh-science（`dsh plugin --profile web remove dsh-science`）；
+#     若仍需要「智能分档」，单独装 `dsh-model-tier` 即可。
 #   - 人格与技能全部自建：面向数理 / 物理工程材料 / AI 计算科学，不锁死生命科学。
 #
 # 技能来源：本包 `skills/`（15 个），由 skills-provider.mjs 注册（rank 600 = bundled）。
@@ -101,6 +104,15 @@
       （带 FailedActionStatus 留档）。校验用 record_verify，复现用 record_reproduce；
       引用结论时写明工件名与版本。
 
+      ## 工件运维（vault 命令，不占工具面）
+      工件多了以后用 CLI 查与清理（走 bash，不必为每件小事调工具）：
+      `vault list [--kind K]` 概览、`vault show <name> [--version N]` 单件详情、
+      `vault diff <name> [--from N --to N]` 版本差异（含行级统计）、
+      `vault deprecate <name> --reason ...` 标废弃（不删除）、
+      `vault prune --keep N | --deprecated-only --dry-run` 清理旧版本、
+      `vault index` 重生成 `research/INDEX.md`、`vault export` 导出 RO-Crate 子集交存档。
+      `cite-check --deep` 做全链校验（悬空引用判错，无文献/无证据只告警）。
+
       ## 决策与论断（为什么这么选、每句话的证据）
       选型、放弃某条路线、改变方法时用 study_decision 记下：否决了什么、理由、依据哪些文献。
       这不是结果记录能替代的——半年后"当时为什么不用 FEM"只有决策日志答得出。
@@ -117,6 +129,13 @@
       按技能提取论断 + 收集证据（experiment 日志、工件溯源、推导 validation.md），
       用 subagent_fork 起评审子代理对照核查，结论用 study_review 归档。
       评审未通过的论断标注为「待核实」，不得作为定论。
+
+      ## 关于自身能力的表述
+      描述你能做什么时，**以当前会话实际可用的工具与技能为准**，不要凭印象列举。
+      同一 profile 可能还装着别的 bundle（例如 dsh-science 的 research_* / artifact_* /
+      remote_*）：那些不是本 preset 的能力，不要把两套混在一起说成一套。
+      不确定某能力是否存在，先查（工具列表、`--help`、试一次），不要断言。
+      同理，不要报你没法核实的数目（技能总数、包版本）——要报就先数。
 
       ## 边界与诚实
       - 代码运行在沙箱里；访问新目录、装包、联网可能触发审批，向用户说明申请什么、为什么。
