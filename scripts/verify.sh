@@ -31,6 +31,7 @@ run "pdf-tools 测试（画像 / markdown / text / render）" node scripts/test-
 run "lit-lib 测试（frontmatter / 校验 / 过滤 / CLI 流程）" node scripts/test-lit-lib.mjs
 run "vault-core 单测（锁 / 原子写 / 哈希 / 硬链接 / 遍历）" node scripts/test-vault-core.mjs
 run "vault-record 测试（保存 / 去重 / 校验 / 复现）" node scripts/test-vault-record.mjs
+run "vault-study 测试（状态机 / 归档 / 决策 / 评审 / 回退）" node scripts/test-vault-study.mjs
 
 if [[ "${1:-}" == "--live" ]]; then
   run "lit-tools 联网实测（lit_doi / lit_search / lit_bib / lit_pdf ×2）" node scripts/test-lit-tools.mjs --live
