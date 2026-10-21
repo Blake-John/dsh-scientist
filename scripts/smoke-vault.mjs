@@ -89,7 +89,7 @@ console.log('工具清单：')
 for (const t of registered) console.log(`  ${t.name.padEnd(18)} ${t.description.slice(0, 46)}…`)
 console.log('')
 console.log(`定义体量：描述 ${bytes} 字符 + 参数 ${paramBytes} 字符 ≈ ${tokens} tokens/请求常驻`)
-console.log(`对照：dsh-science 31 个工具 ≈ 1941 tokens（本包 12 个）`)
+console.log(`对照：改造前 dsh-science 31 个工具 ≈ 1941 tokens；本包 21 个 ≈ 3192（多出的是 loop 记账与论断工具）`)
 
 // ── 命令与强制层：同样按包名解析并真跑 apply() ──
 const commands = []

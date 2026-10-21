@@ -98,6 +98,8 @@ Sandve 2013 可复现十条、Schnell 2015 计算实验记录本十条）。
 bash scripts/install-cli.sh          # → ~/.local/bin/{lit,lit-lib,cite-check,vault}
 ```
 
+> 总纲文档：[docs/plugin-development-plan.md](docs/plugin-development-plan.md)（目标 / 功能 / 边界 / 命名 / 角色分工 / 工具与技能 / 交互 / 科研流程 / 路线图）
+
 ## 斜杠命令（约定 loop）
 
 输入框里敲 `/` 可见。命令把**入口契约**与**出口契约**用代码钉死，中段交给模型；
