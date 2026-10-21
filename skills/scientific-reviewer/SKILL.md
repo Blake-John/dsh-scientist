@@ -22,7 +22,7 @@ whenToUse: 关键论断要写进论文/报告前；实验结论异常重要时�
 2. **收集执行记录**：
    - `experiments/<id>/design.md` + `log.md`（实际跑的命令与观察）
    - `vault show <name>`（溯源：命令/输入/环境/哈希）
-   - 相关代码（analyses/ 或 experiments/<id>/code/）
+   - 相关代码（experiments/<id>/code/）
 
 3. **启动评审子代理**（用 subagent_fork 继承本会话上下文，或 subagent 带完整材料）：
    评审提示词包含：
@@ -36,7 +36,7 @@ whenToUse: 关键论断要写进论文/报告前；实验结论异常重要时�
      e. 是否区分了"结果"与"推测"
    - 输出格式：每条论断 verdict（supported / refuted / needs-work / unverifiable）+ 依据 + 问题清单
 
-4. **归档**：`study_review`（target=论断/实验/工件，verdict，issues，summary）→ 写入 reviews/<id>/report.md。
+4. **归档**：`study_review`（target=论断/实验/工件，verdict，issues，summary）→ 写入 research/reviews/<id>.md。
 
 5. **处置**：needs-work/refuted 的论断，回到研究循环修复（补分析、改措辞、降级为推测），再评审一次。
 

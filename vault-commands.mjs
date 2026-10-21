@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { readJson, resolveRoot, slugify } from './vault-core.mjs'
 import { createLoop, listLoops, readLoop, suspendEnforcement } from './vault-loop-core.mjs'
 import { ensureStudy } from './vault-study.mjs'
+import { projectLayout } from './project-layout.mjs'
 
 export const name = 'dsh-scientist-vault-commands'
 export const inject = ['commands']
@@ -82,9 +83,11 @@ const LOOP_COMMANDS = [
     usage: '<方向> [--no-init] [--dry-run]',
     skill: 'domain-survey',
     maxNudges: 3,
-    plan(arg) {
+    plan(arg, { paths }) {
       const slug = slugify(arg, 'topic')
-      const artifact = `reports/landscape-${slug}.md`
+      const artifact = paths.version === 'v2'
+        ? `${paths.surveys}/${slug}/report.md`
+        : `${paths.reports}/landscape-${slug}.md`
       return {
         requires: [`file-since-open:${artifact}`, `min-citations:${artifact}:5`],
         checks: [`contains:${artifact}:gap`, `markdown-table:${artifact}`, `citations-bib:${artifact}`],
@@ -94,7 +97,7 @@ const LOOP_COMMANDS = [
         steps: [
           '界定方向边界与子问题',
           '梳理流派与代表工作（每条带引用）',
-          '用 lit_bib 把引用的文献落到 literature/references.bib（报告里的 citekey 必须能在 bib 找到）',
+          `用 lit_bib 把引用的文献落到 ${paths.bib}（报告里的 citekey 必须能在 bib 找到）`,
           '时间线与方法/指标对比（Markdown 表格）',
           '开放问题与 gap 清单',
           '最小切入点建议',
@@ -108,14 +111,14 @@ const LOOP_COMMANDS = [
     usage: '<DOI|arXiv id|标题> [--no-init] [--dry-run]',
     skill: 'literature-retrieval',
     maxNudges: 3,
-    plan(arg) {
+    plan(arg, { paths }) {
       // key-agnostic：citekey 由元数据（第一作者姓+年份+关键词）决定，
       // 命令入口在解析 DOI/标题之前不知道，所以不把参数 slug 当 key。
       return {
         requires: ['paper-note:核心主张|方法要点|局限'],
         checks: [],
         workMin: 2,
-        artifacts: ['literature/notes/<citekey>.md（本次新建或更新）', 'literature/references.bib（对应条目）'],
+        artifacts: [`${paths.notes}/<citekey>.md（本次新建或更新）`, `${paths.bib}（对应条目）`],
         mustContain: [
           '核心主张 / 方法要点 / 局限 三节（按 literature-retrieval 的笔记模板，每节有实质内容）',
           'citekey 遵循 <第一作者姓><年份><关键词>，笔记文件名与 bib 条目名一致',
@@ -124,7 +127,7 @@ const LOOP_COMMANDS = [
           '取全文（lit_pdf）并先用 pdf_outline 画像',
           '用 lit_doi 核对元数据，按 <第一作者姓><年份><关键词> 确定 citekey',
           '按 literature-retrieval 的笔记模板精读：核心主张 / 方法要点 / 证据强度 / 局限 / 与本课题的关系',
-          '写笔记 literature/notes/<citekey>.md，并用 lit_bib(citekey=…) 落 bib',
+          `写笔记 ${paths.notes}/<citekey>.md，并用 lit_bib(citekey=…) 落 bib`,
         ],
       }
     },
@@ -135,9 +138,9 @@ const LOOP_COMMANDS = [
     usage: '<命题|流程|逻辑待推敲点> [--no-init] [--dry-run]',
     skill: 'derivation-lab',
     maxNudges: 5,
-    plan(arg) {
+    plan(arg, { paths }) {
       const id = slugify(arg, 'derivation')
-      const dir = `derivations/${id}`
+      const dir = `${paths.derivations}/${id}`
       return {
         requires: [`file-since-open:${dir}/derive.py`, `executable:${dir}/derive.py`, `file-since-open:${dir}/validation.md`],
         checks: [`contains-any:${dir}/validation.md:数值|量纲|极限|反例|文献|小参数|展开|不确定度|蒙特卡洛`],
@@ -160,8 +163,8 @@ const LOOP_COMMANDS = [
     argOptional: true,
     skill: null,
     maxNudges: 3,
-    plan(arg) {
-      const target = arg ? (arg.includes('/') ? arg : `reports/${slugify(arg, 'report')}.md`) : `reports/progress-${today()}.md`
+    plan(arg, { paths }) {
+      const target = arg ? (arg.includes('/') ? arg : `${paths.reports}/${slugify(arg, 'report')}.md`) : `${paths.reports}/progress-${today()}.md`
       return {
         requires: [`file-since-open:${target}`],
         checks: ['cite-check-deep'],
@@ -319,7 +322,8 @@ function makeLoopHandler(ctx, spec) {
       }
     }
 
-    const plan = spec.plan(arg)
+    const layout = await projectLayout(root)
+    const plan = spec.plan(arg, { paths: layout })
     if (flags['dry-run']) {
       return { kind: 'success', text: buildPrompt(spec, plan, '(dry-run)', arg) }
     }

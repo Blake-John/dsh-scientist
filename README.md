@@ -12,6 +12,25 @@
 | 读 PDF | 页面画像 → 结构化 md / 纯文本 / 表格 / 渲染成图四路并用，公式与图表视觉兜底，产出带页码的笔记 | `pdf-reading` |
 | 专业推导 | sympy 符号推导写成可重跑脚本 + pint 量纲 + uncertainties 误差传播 + 数值/极限/展开/文献交叉验证 + LaTeX 成文 | `derivation-lab` |
 
+## 项目结构（v2）
+
+`study_init` 建出的科研项目按功能分层，不再平铺十几个目录：
+
+```
+project/
+├── codes/          # 可复用代码
+├── knowledge/      # 调研 surveys/ · 文献 literature/ · 阶段报告 reports/ · 研究日志 logs/ · 发现 findings/
+├── research/       # study.json · INDEX.md · loops/ · records/ · reviews/ · decisions/
+├── data/           # raw/ interim/ processed/ external/ + manifest.tsv
+├── experiments/    # E01/{design,config,run,logs,results} · derivations/<id>/
+├── outputs/        # manuscript/ · figures/ · tables/ · submission/ · exports/
+├── envs/           # 环境锁定
+└── scratch/        # 临时（gitignore）
+```
+
+每个目录有 `README.md` 说明用途；根 `README.md` 是项目首页，`research/INDEX.md` 是自动生成的项目地图。
+完整约定、边界规则与 v1→v2 迁移见 [docs/project-layout-v2.md](docs/project-layout-v2.md)。
+
 ## 文献链路（4 个原生工具）
 
 取代了已移除的 paper-search-mcp：**57 个工具**（定义体量 35,560 字符 ≈ **9.4k tokens/请求**）→ 现在 **4 个工具**（约 2.4k 字符 ≈ 0.6k）。
@@ -20,7 +39,7 @@
 |---|---|
 | `lit_search` | 多源并发检索 + 去重，返回带 citekey 的表格与各源状态 |
 | `lit_doi` | 按 DOI 取权威元数据（Crossref → Europe PMC） |
-| `lit_bib` | 生成 BibTeX 并写入 `literature/references.bib`（按 DOI 幂等） |
+| `lit_bib` | 生成 BibTeX 并写入 `knowledge/literature/references.bib`（按 DOI 幂等） |
 | `lit_pdf` | 取全文：arXiv → LibGen（仅 DOI 精确匹配） |
 
 配套的**读 PDF** 工具（2 个）：
@@ -48,7 +67,7 @@
 Unpaywall（422 需真实邮箱）、Anna's Archive / libgen.is（连接失败）。
 **不含 sci-hub**（按用户决定）。
 
-**文献库（工程化管理）**：`lit-lib` 把每篇文献落成 `literature/notes/<citekey>.md` 的结构化记录
+**文献库（工程化管理）**：`lit-lib` 把每篇文献落成 `knowledge/literature/notes/<citekey>.md` 的结构化记录
 （受控关键词 + 命名空间标签 + 时间戳 + 引用数 + 评估分档），入库自动抓元数据、下 PDF、写 bib，
 `lit-lib check` 做词表 ↔ bib ↔ PDF 三方校验。
 
@@ -176,6 +195,9 @@ export PAPER_SEARCH_MCP_GOOGLE_SCHOLAR_PROXY_URL="http://..."   # 绕 Google Sch
 
 ## 目录结构
 
+> 下面是**插件包自身**的文件；`study_init` 建出的**科研项目**结构见
+> [docs/project-layout-v2.md](docs/project-layout-v2.md)（codes / knowledge / research / data / experiments / outputs / envs / scratch）。
+
 ```
 scientist/
   package.json        包声明：dsh.bundle.patch + exports
@@ -184,6 +206,7 @@ scientist/
   lit-core.mjs        文献核心：源适配器 / 去重 / 缓存 / 退避 / BibTeX / LibGen / PDF 校验
   lit-tools.mjs       4 个文献工具（lit_search / lit_doi / lit_bib / lit_pdf）
   pdf-tools.mjs       2 个 PDF 工具（pdf_outline / pdf_read）
+  project-layout.mjs  项目目录布局 v2（路径唯一来源 + v1 兼容 + 迁移辅助）
   vault-core.mjs      共享底座：文件锁 / 原子写 / 流式哈希 / 硬链接去重 / 忽略遍历
   vault-record.mjs    3 个工件与运行工具（record_save / record_verify / record_reproduce）
   vault-study.mjs     9 个研究状态工具（study_init … study_claim）

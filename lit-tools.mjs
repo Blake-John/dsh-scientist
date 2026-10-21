@@ -21,6 +21,7 @@ import {
   toBibtex,
   verifyPdf,
 } from './lit-core.mjs'
+import { projectLayout } from './project-layout.mjs'
 
 export const name = 'dsh-scientist-lit'
 export const inject = ['tools']
@@ -155,14 +156,14 @@ export function apply(ctx) {
     tool({
       name: 'lit_bib',
       description:
-        '按 DOI 生成 BibTeX 条目并（默认）追加到 literature/references.bib。' +
+        '按 DOI 生成 BibTeX 条目并（默认）追加到 knowledge/literature/references.bib。' +
         '按 DOI 幂等去重；缺 author/title/year 时不编造，写入 % TODO 注释并在返回里列出待补项。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           doi: { type: 'string', description: 'DOI' },
-          out: { type: 'string', description: 'bib 文件路径（相对 root），默认 literature/references.bib' },
+          out: { type: 'string', description: 'bib 文件路径（相对 root），默认 knowledge/literature/references.bib' },
           citekey: { type: 'string', description: '自定义 citekey；缺省自动生成' },
           write: { type: 'boolean', description: '是否写入文件，默认 true；false 只返回条目' },
           root: { type: 'string', description: '项目根目录，默认进程工作目录' },
@@ -177,7 +178,8 @@ export function apply(ctx) {
         const warn = bib.problems.length ? `\n\n⚠ 待补：${bib.problems.join('；')}` : ''
         if (args.write === false) return `${bib.entry}${warn}`
         const root = rootOf(args)
-        const rel = args.out ?? 'literature/references.bib'
+        const layout = await projectLayout(root)
+        const rel = args.out ?? layout.bib
         const path = rel.startsWith('/') ? rel : join(root, rel)
         const result = await appendBib(path, { entry: bib.entry, doi: record.doi })
         return result.added
@@ -193,7 +195,7 @@ export function apply(ctx) {
       name: 'lit_pdf',
       description:
         '取论文全文 PDF 并落到本地：arXiv（有 arXiv id 时优先）→ LibGen（仅按 DOI 精确匹配，会校验 edition 页 DOI）。' +
-        '保存为 data/papers/<citekey>.pdf，校验 %PDF 魔数与页数。' +
+        '保存为 knowledge/literature/pdfs/<citekey>.pdf，校验 %PDF 魔数与页数。' +
         '不做 sci-hub。拿不到时返回各路线失败原因与建议。',
       parameters: {
         type: 'object',
@@ -201,7 +203,7 @@ export function apply(ctx) {
         properties: {
           doi: { type: 'string', description: 'DOI（与 arxiv_id 二选一）' },
           arxiv_id: { type: 'string', description: 'arXiv id，如 1706.03762' },
-          out_dir: { type: 'string', description: '输出目录（相对 root），默认 data/papers' },
+          out_dir: { type: 'string', description: '输出目录（相对 root），默认 knowledge/literature/pdfs' },
           citekey: { type: 'string', description: '文件名用 citekey；缺省自动生成' },
           root: { type: 'string', description: '项目根目录，默认进程工作目录' },
         },
@@ -216,7 +218,8 @@ export function apply(ctx) {
           if (meta) citekey = makeCitekey(meta)
         }
         if (!citekey && args.arxiv_id) citekey = `arxiv${String(args.arxiv_id).replace(/[^0-9a-z]/gi, '')}`
-        const rawOut = args.out_dir ?? 'data/papers'
+        const layout = await projectLayout(root)
+        const rawOut = args.out_dir ?? layout.pdfs
         const outDir = isAbsolute(rawOut) ? rawOut : join(root, rawOut)
         try {
           const result = await fetchPdf({ doi: args.doi, arxivId: args.arxiv_id, outDir, citekey, signal: exec.signal, cacheRoot: root })
@@ -230,7 +233,7 @@ export function apply(ctx) {
         } catch (error) {
           if (!(error instanceof LitError)) throw error
           const attempts = (error.attempts ?? []).map((a) => `  · ${a}`).join('\n')
-          return `✗ ${error.message}\n${attempts}\n提示：${error.hint ?? '确认 DOI 有 OA 副本；或手动下载后放入 data/papers/'}`
+          return `✗ ${error.message}\n${attempts}\n提示：${error.hint ?? '确认 DOI 有 OA 副本；或手动下载后放入 knowledge/literature/pdfs/'}`
         }
       },
     }),

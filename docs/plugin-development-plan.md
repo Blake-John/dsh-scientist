@@ -1,6 +1,6 @@
 # dsh-scientist 开发规划
 
-> 版本 0.3.0 · 最后更新 2026-10-21
+> 版本 0.4.0 · 最后更新 2026-10-21
 > 本文是该插件的**总纲**：目标、功能、边界、命名、角色分工、工具与技能、用户交互、科研流程、路线图。
 
 ---
@@ -113,15 +113,27 @@
 | 目录 | 内容 | 入 git |
 |---|---|---|
 | `research/study.json` | 研究状态唯一真相 | ✅ |
-| `research/loops/<id>.json` | 约定 loop 进度 | ✅ |
+| `research/INDEX.md` | 自动生成的项目地图 | ✅ |
+| `research/loops/<id>.json` | 约定 loop 进度 | ❌ 运行态 |
 | `research/records/<name>/v<N>/` | 工件版本（manifest.json + provenance.jsonl + files/） | ✅ 小文件 |
-| `literature/notes/<citekey>.md` | 文献笔记 | ✅ |
-| `literature/references.bib` | 书目 | ✅ |
-| `reports/` | 调研报告、进度日志 | ✅ |
-| `derivations/<id>/` | 推导脚本 + 验证记录 | ✅ |
-| `experiments/<id>/` | design.md / log.md / code/ / results/ | 代码入，大结果出 |
-| `analyses/` `figures/` `manuscript/` `reviews/` `envs/` | 分析、图、稿、评审、环境 | ✅ |
-| `data/` | 原始数据 | ❌ 用 data-inventory 登记 |
+| `research/reviews/<id>.md` | 评审长文 | ✅ |
+| `knowledge/surveys/<topic>/` | 调研报告（report/scope/refs/timeline） | ✅ |
+| `knowledge/literature/notes/<citekey>.md` | 文献笔记 | ✅ |
+| `knowledge/literature/references.bib` | 书目 | ✅ |
+| `knowledge/literature/pdfs/` | 论文 PDF | ❌ 可重下/LFS |
+| `knowledge/reports/` | 阶段总结（周报/月报/组会） | ✅ |
+| `knowledge/logs/` | 研究日志（按日期） | ✅ |
+| `knowledge/findings/` | 原子发现/经验 | ✅ |
+| `experiments/<id>/` | design.md / config.yaml / run.sh / code/ / logs/ / results/ | 代码入，大结果出 |
+| `experiments/derivations/<id>/` | 推导脚本 + 验证记录 | ✅ |
+| `outputs/manuscript/` `outputs/figures/` `outputs/tables/` | 论文稿 / 最终图 / 最终表 | ✅ |
+| `outputs/submission/` `outputs/exports/` | 投稿材料 / RO-Crate | 视情况 |
+| `codes/` | 可复用代码 | ✅ |
+| `data/` | 原始/中间/处理后/外部数据 | ❌ 用 data-inventory 登记 |
+| `envs/` | 环境锁定 | ✅ |
+| `scratch/` | 临时 | ❌ |
+
+完整结构与迁移见 [project-layout-v2.md](project-layout-v2.md)。
 
 ### 5.4 标识符
 
@@ -163,7 +175,7 @@
 |---|---|
 | `lit_search` | 多源并发检索：Crossref / arXiv / PubMed / Europe PMC |
 | `lit_doi` | 按 DOI 取权威元数据（Crossref 优先，退 Europe PMC） |
-| `lit_bib` | 生成 BibTeX 并追加到 `literature/references.bib` |
+| `lit_bib` | 生成 BibTeX 并追加到 `knowledge/literature/references.bib` |
 | `lit_pdf` | 取全文 PDF：arXiv 优先 → LibGen（DOI 精确匹配） |
 
 ### 7.2 PDF（2）
@@ -309,18 +321,18 @@
 | 阶段 | 用户动作 | agent 动作 | 产物 |
 |---|---|---|---|
 | ① 立项 | `/study-init` | 建脚手架 | `research/study.json` + 目录 |
-| ② 调研 | `/survey` | 测绘边界/流派/时间线/对比/gap | `reports/landscape-*.md` |
-| ③ 精读 | `/paper` | 取全文→画像→分节读→笔记 | `literature/notes/*.md` + bib |
+| ② 调研 | `/survey` | 测绘边界/流派/时间线/对比/gap | `knowledge/surveys/*/report.md` |
+| ③ 精读 | `/paper` | 取全文→画像→分节读→笔记 | `knowledge/literature/notes/*.md` + bib |
 | ④ 立假设 | 直接说 或 `study_hypothesis` | 可证伪表述 + citekeys | `study.json` 假设 |
-| ⑤ 设计实验 | `study_experiment` | 步骤/预期/种子/环境 | 实验记录 |
+| ⑤ 设计实验 | `study_experiment` | 步骤/预期/种子/环境 | `experiments/E01/` |
 | ⑥ 执行 | — | 跑代码 | `experiments/<id>/` |
-| ⑦ 推导/论证 | `/derive` | 形式化→脚本→多路验证 | `derivations/<id>/` |
+| ⑦ 推导/论证 | `/derive` | 形式化→脚本→多路验证 | `experiments/derivations/<id>/` |
 | ⑧ 归档 | — | `record_save` + `record_verify` | `research/records/` |
 | ⑨ 结论 | `study_finding` | 推进假设状态、开下一轮 | `study.json` |
 | ⑩ 决策留痕 | `study_decision` | 记录否决项与理由 | `study.json` 决策 |
-| ⑪ 成文 | `/write` | 汇总 + cite-check | `reports/` / `manuscript/` |
+| ⑪ 成文 | `/write` | 汇总 + cite-check | `knowledge/reports/` / `outputs/manuscript/` |
 | ⑫ 论断绑证据 | `study_claim` | citekey + 工件 | `study.json` 论断 |
-| ⑬ 评审 | `/review` | 子代理核查 | `study.json` 评审 |
+| ⑬ 评审 | `/review` | 子代理核查 | `research/reviews/<id>.md` + `study.json` |
 | ⑭ 全链校验 | `cite-check --deep` | 悬空引用判错、覆盖缺口判警 | 报告 |
 
 ---
@@ -353,8 +365,9 @@
 
 ## 15. 路线图
 
-### 已完成（0.2.x → 0.3.0）
+### 已完成（0.2.x → 0.4.0）
 
+- [x] 项目结构 v2（`codes / knowledge / research / data / experiments / outputs / envs / scratch`）+ `vault migrate`
 - [x] 文献链路 4 工具（替代 paper-search-mcp 57 工具）
 - [x] PDF 读取 2 工具
 - [x] 科研记录 12 工具（record 3 + study 9）
@@ -364,7 +377,7 @@
 - [x] 强制层（3 钩子 + 拦停 + 挂起 + 四终态）
 - [x] 项目脚手架（目录 + bib + INDEX）
 
-### 待办（0.4.x 候选）
+### 待办（0.5.x 候选）
 
 | 项 | 价值 | 成本 |
 |---|---|---|

@@ -44,9 +44,9 @@
 | 命令 | 参数 | 入口契约 | 出口契约（校验） | 技能 |
 |---|---|---|---|---|
 | `/study-init` | `[标题]` `--question` | 无（幂等；已存在则更新 title/question） | `research/study.json` 存在且含 title | — |
-| `/survey` | `<方向>` | 可无项目（自动建） | `reports/landscape-<slug>.md` 本次新建或更新<br>≥5 条 key 式引用（`[@key]` / `\cite{key}`）<br>含 Markdown 方法对比表 + gap 清单<br>报告里的 citekey 都在 bib<br>work ≥3 条 | domain-survey |
-| `/paper` | `<DOI\|arXiv id\|标题>` | 可无项目（自动建） | `literature/notes/<citekey>.md` 本次新建或更新<br>「核心主张/方法要点/局限」三节有实质内容<br>该 citekey 在 bib 有条目<br>work ≥2 条 | literature-retrieval + pdf-reading |
-| `/derive` | `<命题\|流程\|逻辑>` | 要求项目（缺则自动建） | `derivations/<id>/derive.py` 本次新建或更新且可执行<br>`validation.md` 本次新建或更新且含至少一条验证路线（数值/量纲/极限/反例/文献/小参数/不确定度）<br>work ≥3 条 | derivation-lab |
+| `/survey` | `<方向>` | 可无项目（自动建） | `knowledge/surveys/<slug>/report.md` 本次新建或更新<br>≥5 条 key 式引用（`[@key]` / `\cite{key}`）<br>含 Markdown 方法对比表 + gap 清单<br>报告里的 citekey 都在 bib<br>work ≥3 条 | domain-survey |
+| `/paper` | `<DOI\|arXiv id\|标题>` | 可无项目（自动建） | `knowledge/literature/notes/<citekey>.md` 本次新建或更新<br>「核心主张/方法要点/局限」三节有实质内容<br>该 citekey 在 bib 有条目<br>work ≥2 条 | literature-retrieval + pdf-reading |
+| `/derive` | `<命题\|流程\|逻辑>` | 要求项目（缺则自动建） | `experiments/derivations/<id>/derive.py` 本次新建或更新且可执行<br>`validation.md` 本次新建或更新且含至少一条验证路线（数值/量纲/极限/反例/文献/小参数/不确定度）<br>work ≥3 条 | derivation-lab |
 | `/write` | `[目标]`（默认进度日志） | 要求项目 | 目标文件本次新建或更新<br>`cite-check --deep` 通过 | — |
 | `/review` | `[对象]`（默认全部未验证项） | 要求项目 | `study.json` 新增 review 记录 | scientific-reviewer |
 | `/status` | `[loop-id]` `--abort` `--brief` `--json` | 无 | 无（只读，不创建 loop、不拦停） | — |
@@ -76,7 +76,7 @@
   ],
 
   "exit": {
-    "requires": ["reports/landscape-pinn.md"],
+    "requires": ["knowledge/surveys/pinn/report.md"],
     "checks": ["cite-check"],        // 由 vault loop close 执行
     "workMin": 3,
     "done": false,
@@ -114,7 +114,7 @@ vault loop abort <id>                            手动中止
 
 ```
 ✗ 出口契约未满足（loop 保持 running）
-  · 缺产物：reports/landscape-pinn.md
+  · 缺产物：knowledge/surveys/pinn/report.md
   · 引用不足：需要 ≥5 条，实际 2 条
   · work 记录不足：需要 ≥3 条，实际 1 条
   补完后重试，或声明失败：vault loop close <id> --failed --reason "…"
@@ -181,7 +181,7 @@ function makeHandler(ctx, spec) {
 /survey 已启动 · loop survey-pinn-20261021T2016
 
 ## 出口契约（不满足不能关闭）
-- 产物：reports/landscape-pinn.md
+- 产物：knowledge/surveys/pinn/report.md
 - 必须含：≥5 条编号引用、方法对比表、gap 清单
 - 校验：cite-check（由 vault loop close 执行）
 - 过程留痕：work ≥3 条

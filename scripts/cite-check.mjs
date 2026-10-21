@@ -18,6 +18,7 @@
  */
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { projectLayout } from '../project-layout.mjs'
 
 const argv = process.argv.slice(2)
 
@@ -202,7 +203,8 @@ async function* walk(dir) {
   for (const entry of entries) {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) {
-      if (['node_modules', '.git', 'data', 'artifacts', 'envs'].includes(entry.name)) continue
+      if (['node_modules', '.git', 'data', 'artifacts', 'envs', 'scratch', 'codes'].includes(entry.name)) continue
+      if (entry.name === 'exports' && dir.endsWith('outputs')) continue
       yield* walk(path)
     } else if (/\.(md|tex)$/i.test(entry.name)) {
       yield path
@@ -211,10 +213,11 @@ async function* walk(dir) {
 }
 
 const main = async () => {
-  const bibPath = join(ROOT, 'literature', 'references.bib')
+  const layout = await projectLayout(ROOT)
+  const bibPath = join(ROOT, layout.bib)
   const bibExists = await stat(bibPath).then(() => true, () => false)
   if (!bibExists) {
-    console.error(`✗ 找不到 ${bibPath}（先在 literature/references.bib 建书目）`)
+    console.error(`✗ 找不到 ${bibPath}（先在 ${layout.bib} 建书目）`)
     process.exit(2)
   }
   const entries = parseBib(await readFile(bibPath, 'utf8'))
@@ -304,7 +307,7 @@ const main = async () => {
     }
     // 文献库里登记过的 key 也算已知（不强制维护 bib）
     const notesKeys = new Set()
-    const notesDir = join(ROOT, 'literature', 'notes')
+    const notesDir = join(ROOT, layout.notes)
     try {
       for (const entry of await readdir(notesDir)) {
         if (entry.endsWith('.md')) notesKeys.add(entry.slice(0, -3))

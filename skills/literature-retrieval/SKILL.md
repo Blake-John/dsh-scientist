@@ -17,8 +17,8 @@ whenToUse: 调研检索、写报告需要引用、核对他人结论、找具体
 |---|---|
 | `lit_search` | 多源并发检索 + 去重，**首选**。`sources` 可选 `crossref`/`arxiv`/`pubmed`/`europepmc` |
 | `lit_doi` | 按 DOI 取权威元数据（Crossref → Europe PMC），核对引用、补全字段、判断有无 OA |
-| `lit_bib` | 按 DOI 生成 BibTeX 并写入 `literature/references.bib`（按 DOI 幂等） |
-| `lit_pdf` | 取全文 PDF：arXiv → LibGen（DOI 精确匹配），存 `data/papers/<citekey>.pdf` |
+| `lit_bib` | 按 DOI 生成 BibTeX 并写入 `knowledge/literature/references.bib`（按 DOI 幂等） |
+| `lit_pdf` | 取全文 PDF：arXiv → LibGen（DOI 精确匹配），存 `knowledge/literature/pdfs/<citekey>.pdf` |
 
 **当前可用源（2026-10 实测）**：Crossref ✅、arXiv ✅、PubMed ✅、Europe PMC ✅、LibGen ✅。
 OpenAlex / Semantic Scholar 限流、Unpaywall 缺真实邮箱 —— **均未接入**，不要试图调用。
@@ -36,19 +36,19 @@ OpenAlex / Semantic Scholar 限流、Unpaywall 缺真实邮箱 —— **均未�
 - 布尔与字段：`(diffusion OR "score-based") AND (sampling OR "reverse process")`
 - **精确标题用 `ti:` 前缀**（实测：直接搜 "Attention Is All You Need" 排不到原文，`ti:"Attention Is All You Need"` 才能命中）
 - 已知 arXiv id 时直接传 id（`lit_search "1706.03762"` → 精确直取，走 `id_list`）
-- 逐条记录到 `literature/queries.md`：日期 / 源 / 检索式 / 命中数 / 备注。
+- 逐条记录到 `knowledge/literature/queries.md`：日期 / 源 / 检索式 / 命中数 / 备注。
 - 同一问题准备 2–3 个不同角度的检索式（方法角度、任务角度、应用角度），互相补漏。
 
 ### 2. 检索
 - 首选 `lit_search`，`sources` 传 2–4 个互补源（默认 `["crossref","arxiv"]`；生医加
   `pubmed`/`europepmc`）。一次多源比十次单源省时且漏检少。
 - 返回里带各源状态行（如 `crossref ✓ 20 / openalex ✗ rate_limited`）——**把状态记进
-  `literature/queries.md`**，将来判断"漏检"时有据可查。
+  `knowledge/literature/queries.md`**，将来判断"漏检"时有据可查。
 - 结果先按标题粗筛，再按摘要精筛；不要一开始就下全文。
 - 记下命中总数——后面判断"是否漏检"要用。
 
 ### 3. 筛选（显式标准，留痕）
-在 `literature/screening.md` 写下本次的纳入/排除标准，例如：
+在 `knowledge/literature/screening.md` 写下本次的纳入/排除标准，例如：
 - 纳入：同行评审或高引预印本；提出方法或给出可用结论；2020 年后（奠基工作例外）。
 - 排除：纯应用无方法贡献；无法获取正文且摘要不足以判断；重复发表。
 
@@ -64,7 +64,7 @@ OpenAlex / Semantic Scholar 限流、Unpaywall 缺真实邮箱 —— **均未�
 
 ### 5. 笔记与书目
 ```
-literature/
+knowledge/literature/
   queries.md            检索式与命中记录
   screening.md          纳入/排除标准与结果
   notes/<citekey>.md    单篇笔记（见模板）

@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply, __test__ } from '../vault-commands.mjs'
+import { layoutPaths } from '../project-layout.mjs'
 import { createLoop, listLoops } from '../vault-loop-core.mjs'
 
 const problems = []
@@ -49,17 +50,17 @@ try {
   }
 
   // ── 契约计划（不建 loop）：中文保留 / paper 不把 DOI 当 key ──
-  const planOf = (name, arg) => __test__.LOOP_COMMANDS.find((c) => c.name === name).plan(arg)
+  const planOf = (name, arg) => __test__.LOOP_COMMANDS.find((c) => c.name === name).plan(arg, { paths: layoutPaths('v2') })
   ok(
-    planOf('survey', '航磁补偿').artifacts[0] === 'reports/landscape-航磁补偿.md',
+    planOf('survey', '航磁补偿').artifacts[0] === 'knowledge/surveys/航磁补偿/report.md',
     `survey 中文产物：${planOf('survey', '航磁补偿').artifacts[0]}`,
   )
   ok(
-    planOf('derive', '航磁补偿').artifacts[0] === 'derivations/航磁补偿/derive.py',
+    planOf('derive', '航磁补偿').artifacts[0] === 'experiments/derivations/航磁补偿/derive.py',
     `derive 中文目录：${planOf('derive', '航磁补偿').artifacts[0]}`,
   )
   ok(
-    planOf('write', '航磁补偿').artifacts[0] === 'reports/航磁补偿.md',
+    planOf('write', '航磁补偿').artifacts[0] === 'knowledge/reports/航磁补偿.md',
     `write 中文目标：${planOf('write', '航磁补偿').artifacts[0]}`,
   )
   ok(
@@ -99,7 +100,7 @@ try {
   ok(loops[0].exit.workMin === 3, 'workMin=3')
   ok(loops[0].maxNudges === 3, 'maxNudges=3')
   ok(loops[0].skill === 'domain-survey', 'skill 记录')
-  ok(loops[0].exit.requires.some((r) => r.includes('reports/landscape-pinn-求解器.md')), `产物路径（中文保留）：${loops[0].exit.requires}`)
+  ok(loops[0].exit.requires.some((r) => r.includes('knowledge/surveys/pinn-求解器/report.md')), `产物路径（中文保留）：${loops[0].exit.requires}`)
   ok(loops[0].exit.checks.some((c) => c.startsWith('citations-bib:')), `survey 契约含 citekey↔bib 校验：${loops[0].exit.checks}`)
   ok(loops[0].exit.checks.some((c) => c.startsWith('markdown-table:')), `survey 契约含方法对比表：${loops[0].exit.checks}`)
 
@@ -133,7 +134,7 @@ try {
   const write = await invoke('write', '')
   ok(write.kind === 'success', `write 无参应成功：${JSON.stringify(write)}`)
   const writeLoop = (await listLoops(root)).find((l) => l.kind === 'write')
-  ok(writeLoop.exit.requires[0].includes('reports/progress-'), `默认目标：${writeLoop.exit.requires[0]}`)
+  ok(writeLoop.exit.requires[0].includes('knowledge/reports/progress-'), `默认目标：${writeLoop.exit.requires[0]}`)
 
   // ── review 的校验项 ──
   const review = await invoke('review', '')

@@ -21,7 +21,7 @@ whenToUse: 文献入库、整理已有文献、按标签或关键词检索库内
 ## 目录
 
 ```
-literature/
+knowledge/literature/
 ├── notes/<citekey>.md    # 单篇记录：frontmatter + 阅读笔记
 ├── taxonomy.yml          # 受控词表（关键词 + 标签命名空间）
 ├── references.bib        # 由 lit_bib 生成
@@ -59,7 +59,7 @@ quality: 4
 confidence: high
 role: method
 read_status: unread
-pdf: data/papers/vaswani2017attention.pdf
+pdf: knowledge/literature/pdfs/vaswani2017attention.pdf
 ---
 # 核心主张 / 方法要点 / 证据强度 / 局限 / 与本课题的关系
 ```
@@ -111,7 +111,7 @@ tags: [collection/thesis-ch2, to-cite/ch1, status/core]
 ## 命令
 
 ```bash
-lit-lib init                                  # 建 literature/ 与词表模板
+lit-lib init                                  # 建 knowledge/literature/ 与词表模板
 lit-lib add <doi|arxiv-id> --keywords a,b [--tags x/y] [--draft]
                                               # 自动：抓元数据 → 下 PDF → 写 bib → 建记录
 lit-lib list [--tag x/y] [--keyword k] [--year 2020] [--status read_full]

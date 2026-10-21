@@ -36,6 +36,7 @@ import {
   searchArxiv,
   toBibtex,
 } from '../lit-core.mjs'
+import { projectLayout } from '../project-layout.mjs'
 
 // ── 字段定义（顺序即渲染顺序）───────────────────────────────────────────────
 
@@ -300,16 +301,19 @@ export function validatePatch(patch, taxonomy) {
 
 // ── 存储 ────────────────────────────────────────────────────────────────────
 
-const paths = (root) => ({
-  dir: join(root, 'literature'),
-  notes: join(root, 'literature', 'notes'),
-  taxonomy: join(root, 'literature', 'taxonomy.yml'),
-  bib: join(root, 'literature', 'references.bib'),
-  index: join(root, 'literature', 'index.json'),
-})
+const paths = async (root) => {
+  const layout = await projectLayout(root)
+  return {
+    dir: join(root, layout.literature),
+    notes: join(root, layout.notes),
+    taxonomy: join(root, layout.literature, 'taxonomy.yml'),
+    bib: join(root, layout.bib),
+    index: join(root, layout.literature, 'index.json'),
+  }
+}
 
 async function loadAll(root) {
-  const p = paths(root)
+  const p = await paths(root)
   const records = []
   if (!existsSync(p.notes)) return records
   for (const file of (await readdir(p.notes)).filter((f) => f.endsWith('.md')).sort()) {
@@ -329,7 +333,7 @@ const list = (v) => (Array.isArray(v) ? v : String(v ?? '').split(',').map((s) =
 // ── 命令 ────────────────────────────────────────────────────────────────────
 
 async function cmdInit(root) {
-  const p = paths(root)
+  const p = await paths(root)
   await mkdir(p.notes, { recursive: true })
   if (!existsSync(p.taxonomy)) {
     const template = await readFile(join(dirname(new URL(import.meta.url).pathname), 'taxonomy.template.yml'), 'utf8')
@@ -341,7 +345,7 @@ async function cmdInit(root) {
 }
 
 async function cmdAdd(root, id, flags) {
-  const p = paths(root)
+  const p = await paths(root)
   await mkdir(p.notes, { recursive: true })
   if (!existsSync(p.taxonomy)) {
     const template = await readFile(join(dirname(new URL(import.meta.url).pathname), 'taxonomy.template.yml'), 'utf8')
@@ -412,7 +416,7 @@ async function cmdAdd(root, id, flags) {
   // 自动：下 PDF
   if (flags['no-pdf'] !== true) {
     try {
-      const outDir = join(root, 'data', 'papers')
+      const outDir = join(root, (await projectLayout(root)).pdfs)
       const pdf = await fetchPdf({
         doi: record.doi || undefined,
         arxivId: record.arxiv || undefined,
@@ -444,7 +448,7 @@ async function cmdAdd(root, id, flags) {
   }
 
   await writeRecord(record)
-  console.log(`✓ 已建记录 literature/notes/${citekey}.md`)
+  console.log(`✓ 已建记录 ${p.notes}/${citekey}.md`)
   if (!keywords.length) console.log('  ⚠ 草稿状态：补 --keywords 后 set，或直接编辑 frontmatter')
 }
 
@@ -510,7 +514,7 @@ async function cmdTag(root, citekey, changes) {
       tags = tags.filter((t) => t !== value)
     }
   }
-  const taxonomy = loadTaxonomy(await readFile(paths(root).taxonomy, 'utf8').catch(() => ''))
+  const taxonomy = loadTaxonomy(await readFile((await paths(root)).taxonomy, 'utf8').catch(() => ''))
   // 只校验新增项：否则记录里一旦有历史脏标签，连"加一个合法标签"或"删掉它"都会被拒
   const addedTags = changes.filter((change) => change.startsWith('+')).map((change) => change.slice(1))
   const tagErrors = validatePatch({ tags: addedTags }, taxonomy)
@@ -542,7 +546,7 @@ async function cmdSet(root, citekey, assignments, flags = {}) {
     }
   }
   // 写入前即时校验：非法枚举 / 未登记关键词 / 无命名空间标签一律拒绝，不改文件
-  const taxonomy = loadTaxonomy(await readFile(paths(root).taxonomy, 'utf8').catch(() => ''))
+  const taxonomy = loadTaxonomy(await readFile((await paths(root)).taxonomy, 'utf8').catch(() => ''))
   const patchErrors = validatePatch(patch, taxonomy)
   if (patchErrors.length) {
     for (const message of patchErrors) console.error(`  ✗ ${message}`)
@@ -592,13 +596,13 @@ async function cmdIndex(root) {
     role: record.role ?? null,
     pdf: record.pdf ?? null,
   }))
-  const target = paths(root).index
+  const target = (await paths(root)).index
   await writeFile(target, JSON.stringify({ generatedAt: new Date().toISOString(), count: index.length, records: index }, null, 2))
   console.log(`✓ 已生成 ${target}（${index.length} 条）`)
 }
 
 async function cmdCheck(root) {
-  const p = paths(root)
+  const p = await paths(root)
   const taxonomyText = existsSync(p.taxonomy) ? await readFile(p.taxonomy, 'utf8') : ''
   const taxonomy = loadTaxonomy(taxonomyText)
   const records = await loadAll(root)

@@ -1,3 +1,5 @@
+> 注：本文中的路径是 v1 布局；项目结构 v2（knowledge/surveys、experiments/derivations 等）以 [project-layout-v2.md](project-layout-v2.md) 为准。
+
 # 科研记录（Research Record）：移植 + 重构方案
 
 > 状态：设计稿，待评审。目标版本 0.3.0。

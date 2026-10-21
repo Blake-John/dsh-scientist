@@ -18,7 +18,7 @@
 //   F11 评审可查（study_state 汇总 + reviews[] 挂在假设上）
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   appendJsonl,
@@ -33,6 +33,7 @@ import {
   withinRoot,
   writeJsonAtomic,
 } from './vault-core.mjs'
+import { LAYOUT_V2, LAYOUT_VERSION, projectLayout } from './project-layout.mjs'
 
 export const name = 'dsh-scientist-vault-study'
 export const inject = ['tools']
@@ -142,9 +143,10 @@ function setPhase(study, to, { reason, via }) {
 /** citekey 校验：软提醒——不存在只警告，不阻断 */
 async function checkCitekeys(root, citekeys) {
   const warnings = []
+  const paths = await projectLayout(root)
   for (const key of citekeys) {
-    const file = join(root, 'literature', 'notes', `${key}.md`)
-    if (!existsSync(file)) warnings.push(`文献库里没有 ${key}（literature/notes/${key}.md 不存在）`)
+    const file = join(root, paths.notes, `${key}.md`)
+    if (!existsSync(file)) warnings.push(`文献库里没有 ${key}（${paths.notes}/${key}.md 不存在）`)
   }
   return warnings
 }
@@ -161,7 +163,7 @@ const table = (headers, rows) => {
 const cell = (v) => String(v ?? '').replace(/\|/g, '/').replace(/\n/g, ' ').slice(0, 70)
 
 /** 自动生成 research/INDEX.md —— 人和机器都能一眼看全的研究目录 */
-export function renderIndex(study, recordsIndex = { records: [] }) {
+export function renderIndex(study, recordsIndex = { records: [] }, extra = {}) {
   const records = recordsIndex.records ?? []
   const out = []
   out.push(`# ${study.title || '未命名研究'}`)
@@ -172,6 +174,13 @@ export function renderIndex(study, recordsIndex = { records: [] }) {
   const noEvidence = study.claims.filter((c) => !(c.evidence?.citekeys ?? []).length && !(c.evidence?.records ?? []).length)
   out.push(`- 证据覆盖：假设 ${study.hypotheses.length - noCite.length}/${study.hypotheses.length} 有文献 · 论断 ${study.claims.length - noEvidence.length}/${study.claims.length} 有证据`)
   out.push('')
+
+  if (extra.map?.length) {
+    out.push('## 项目地图')
+    out.push('')
+    out.push(table(['层', '路径', '数量'], extra.map.map((m) => [m.layer, `\`${m.path}\``, m.count ?? '—'])))
+    out.push('')
+  }
 
   if (study.question?.history?.length) {
     out.push('## 问题演进')
@@ -189,8 +198,8 @@ export function renderIndex(study, recordsIndex = { records: [] }) {
 
   out.push('## 实验')
   out.push('')
-  out.push(table(['id', '状态', '标题', '假设', '种子', '工件'], study.experiments.map((e) => [
-    e.id, e.status, cell(e.title), e.hypothesis ?? '—', e.seed ?? '**未记录**', (e.records ?? []).join(', ') || '—',
+  out.push(table(['id', '状态', '标题', '假设', '种子', '目录', '工件'], study.experiments.map((e) => [
+    e.id, e.status, cell(e.title), e.hypothesis ?? '—', e.seed ?? '**未记录**', e.path ?? '—', (e.records ?? []).join(', ') || '—',
   ])))
   out.push('')
 
@@ -224,38 +233,144 @@ export function renderIndex(study, recordsIndex = { records: [] }) {
     out.push('')
   }
 
+  if (extra.surveys?.length) {
+    out.push('## 调研')
+    out.push('')
+    out.push(table(['主题', '报告'], extra.surveys.map((s) => [s.name, `\`${s.path}\``])))
+    out.push('')
+  }
+
+  if (extra.derivations?.length) {
+    out.push('## 推导')
+    out.push('')
+    out.push(table(['id', '目录'], extra.derivations.map((d) => [d.name, `\`${d.path}\``])))
+    out.push('')
+  }
+
+  if (extra.reviews?.length) {
+    out.push('## 评审文档')
+    out.push('')
+    out.push(table(['文件', '路径'], extra.reviews.map((r) => [r.name, `\`${r.path}\``])))
+    out.push('')
+  }
+
+  if (extra.outputs?.length) {
+    out.push('## 交付物')
+    out.push('')
+    out.push(table(['目录', '路径'], extra.outputs.map((o) => [o.name, `\`${o.path}\``])))
+    out.push('')
+  }
+
   out.push('---')
   out.push('')
   out.push('由 study_* 工具自动生成；不要手改（会被覆盖）。')
   return `${out.join('\n')}\n`
 }
 
-async function writeIndex(root, study) {
-  const recordsIndex = await readJson(join(root, 'research', 'records', 'index.json'), { records: [] })
-  await mkdir(join(root, 'research'), { recursive: true })
-  await writeFile(join(root, 'research', 'INDEX.md'), renderIndex(study, recordsIndex), 'utf8')
+async function listNames(dir, { files = false, dirs = false, ext = '' } = {}) {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  return entries
+    .filter((e) => (files ? e.isFile() : true) && (dirs ? e.isDirectory() : true))
+    .map((e) => e.name)
+    .filter((name) => !ext || name.endsWith(ext))
+    .sort()
 }
 
-/**
- * 项目目录约定（与 skills/science-project-setup 的表格一致）。
- * 注意：envs/ 与 reviews/ 在项目根，不在 research/ 下。
- */
+/** 扫项目目录，给 INDEX.md 提供“项目地图”与各层清单 */
+async function scanProject(root) {
+  const paths = await projectLayout(root)
+  const surveys = await listNames(join(root, paths.surveys), { dirs: true })
+  const derivations = await listNames(join(root, paths.derivations), { dirs: true })
+  const reviews = await listNames(join(root, paths.reviews), { files: true, ext: '.md' })
+  const outputs = await listNames(join(root, paths.outputs), { dirs: true })
+  const notes = await listNames(join(root, paths.notes), { files: true, ext: '.md' })
+  const experiments = await listNames(join(root, paths.experiments), { dirs: true })
+  const reports = await listNames(join(root, paths.reports), { files: true, ext: '.md' })
+  const logs = await listNames(join(root, paths.logs), { files: true, ext: '.md' })
+  const findings = await listNames(join(root, paths.findings), { files: true, ext: '.md' })
+  return {
+    map: [
+      { layer: '代码', path: paths.codes, count: '—' },
+      { layer: '调研', path: paths.surveys, count: surveys.length },
+      { layer: '文献笔记', path: paths.notes, count: notes.length },
+      { layer: '阶段报告', path: paths.reports, count: reports.length },
+      { layer: '研究日志', path: paths.logs, count: logs.length },
+      { layer: '发现', path: paths.findings, count: findings.length },
+      { layer: '实验', path: paths.experiments, count: experiments.filter((n) => n !== 'derivations').length },
+      { layer: '推导', path: paths.derivations, count: derivations.length },
+      { layer: '工件', path: paths.records, count: '—' },
+      { layer: '评审', path: paths.reviews, count: reviews.length },
+      { layer: '交付', path: paths.outputs, count: outputs.length },
+    ],
+    surveys: surveys.map((name) => ({ name, path: `${paths.surveys}/${name}/report.md` })),
+    derivations: derivations.map((name) => ({ name, path: `${paths.derivations}/${name}` })),
+    reviews: reviews.map((name) => ({ name, path: `${paths.reviews}/${name}` })),
+    outputs: outputs.map((name) => ({ name, path: `${paths.outputs}/${name}` })),
+  }
+}
+
+export async function writeIndex(root, study) {
+  const recordsIndex = await readJson(join(root, 'research', 'records', 'index.json'), { records: [] })
+  const extra = await scanProject(root)
+  const recordMap = extra.map.find((m) => m.layer === '工件')
+  if (recordMap) recordMap.count = recordsIndex.records?.length ?? 0
+  await mkdir(join(root, 'research'), { recursive: true })
+  await writeFile(join(root, 'research', 'INDEX.md'), renderIndex(study, recordsIndex, extra), 'utf8')
+}
+
+/** v2 项目目录（按需建；scaffoldProject 建入口目录与说明） */
 export const PROJECT_DIRS = [
-  'research/records',
-  'research/loops',
-  'literature/notes',
-  'experiments',
-  'analyses',
-  'figures',
-  'manuscript',
-  'reviews',
-  'data',
-  'envs',
-  'reports',
-  'derivations',
+  'codes', 'codes/notebooks', 'codes/scripts', 'codes/tests',
+  'knowledge', 'knowledge/surveys', 'knowledge/literature', 'knowledge/literature/notes', 'knowledge/literature/pdfs',
+  'knowledge/reports', 'knowledge/logs', 'knowledge/findings',
+  'research', 'research/records', 'research/loops', 'research/reviews', 'research/decisions',
+  'data', 'data/raw', 'data/interim', 'data/processed', 'data/external',
+  'experiments', 'experiments/derivations',
+  'outputs', 'outputs/manuscript', 'outputs/figures', 'outputs/tables', 'outputs/submission', 'outputs/exports',
+  'envs', 'scratch',
 ]
 
 const BIB_HEADER = `% references.bib —— 由 lit_bib 追加；也可手工维护\n% 校验：cite-check --root .\n\n`
+
+const DIR_README = {
+  'codes/README.md': '# codes\n\n可复用代码（模块 / notebooks / scripts / tests）。实验专用的一次性脚本放 `experiments/<id>/code/`，成熟后提升到这里。\n',
+  'knowledge/README.md': '# knowledge\n\n学到的东西：`surveys/` 调研、`literature/` 论文与笔记、`reports/` 阶段总结、`logs/` 研究日志、`findings/` 原子发现。\n',
+  'research/README.md': '# research\n\n当前研究状态（插件落地）：`study.json` 唯一真相、`INDEX.md` 项目地图、`loops/` 运行态、`records/` 工件登记、`reviews/` 评审长文、`decisions/` 决策长文。\n',
+  'data/README.md': '# data\n\n原始/中间/处理后/外部数据；默认不入 git。新增数据登记到 `manifest.tsv`（来源、命令、sha256、许可、版本）。\n',
+  'experiments/README.md': '# experiments\n\n每次实验一个目录：`design.md`、`config.yaml`、`run.sh`、`logs/`、`results/`；推导放 `derivations/<id>/`。\n',
+  'outputs/README.md': '# outputs\n\n交付物：`manuscript/` 论文稿、`figures/` 最终图、`tables/` 最终表、`submission/` 投稿材料、`exports/` RO-Crate。\n',
+  'envs/README.md': '# envs\n\n环境锁定文件（conda/uv lock）。跨 codes/ 与 experiments/ 共用。\n',
+}
+
+const ROOT_GITIGNORE = `# dsh-scientist —— 数据/临时/运行态默认不入 git
+data/*
+!data/README.md
+!data/manifest.tsv
+scratch/*
+!scratch/.gitignore
+research/loops/
+research/export/
+knowledge/literature/pdfs/
+outputs/submission/
+outputs/exports/
+.pdf-assets/
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*.h5
+*.pt
+*.pth
+*.npy
+*.npz
+*.parquet
+*.feather
+*.sqlite
+*.zip
+*.tar.gz
+`
+
+const DATA_MANIFEST = 'path\tsource\tcommand\tsha256\tlicense\tversion\tnotes\n'
 
 /** 建全目录与最小脚手架文件；返回实际创建/已存在的清单 */
 export async function scaffoldProject(root) {
@@ -266,17 +381,77 @@ export async function scaffoldProject(root) {
     await mkdir(abs, { recursive: true })
     if (!existed) created.push(`${dir}/`)
   }
-  const bib = withinRoot(root, 'literature/references.bib')
+  for (const [rel, text] of Object.entries(DIR_README)) {
+    const abs = withinRoot(root, rel)
+    if (!existsSync(abs)) {
+      await writeFile(abs, text, 'utf8')
+      created.push(rel)
+    }
+  }
+  const bib = withinRoot(root, LAYOUT_V2.bib)
   if (!existsSync(bib)) {
     await writeFile(bib, BIB_HEADER, 'utf8')
-    created.push('literature/references.bib')
+    created.push(LAYOUT_V2.bib)
   }
-  const dataNote = withinRoot(root, 'data/README.md')
-  if (!existsSync(dataNote)) {
-    await writeFile(dataNote, '# 原始数据\n\n本目录不入 git（体积大/含受限数据）。用 data-inventory 技能登记来源与哈希。\n', 'utf8')
-    created.push('data/README.md')
+  const queries = withinRoot(root, LAYOUT_V2.queries)
+  if (!existsSync(queries)) {
+    await writeFile(queries, '# 检索式\n\n把可复用的检索式写在这里（同义词/布尔/字段限定）。\n', 'utf8')
+    created.push(LAYOUT_V2.queries)
+  }
+  const manifest = withinRoot(root, LAYOUT_V2.dataManifest)
+  if (!existsSync(manifest)) {
+    await writeFile(manifest, DATA_MANIFEST, 'utf8')
+    created.push(LAYOUT_V2.dataManifest)
+  }
+  const scratchIgnore = withinRoot(root, 'scratch/.gitignore')
+  if (!existsSync(scratchIgnore)) {
+    await writeFile(scratchIgnore, '*\n!.gitignore\n', 'utf8')
+    created.push('scratch/.gitignore')
+  }
+  const gitignore = withinRoot(root, '.gitignore')
+  if (!existsSync(gitignore)) {
+    await writeFile(gitignore, ROOT_GITIGNORE, 'utf8')
+    created.push('.gitignore')
   }
   return created
+}
+
+/** 根 README 的托管块；保留用户自己写的内容 */
+export async function writeRootReadme(root, study) {
+  const BEGIN = '<!-- dsh-scientist:begin -->'
+  const END = '<!-- dsh-scientist:end -->'
+  const block = [
+    BEGIN,
+    `# ${study.title || '未命名研究'}`,
+    '',
+    `- 核心问题：${study.question?.text || '（未设定）'}`,
+    `- 阶段：**${study.loop?.phase ?? '?'}** · 第 ${study.loop?.iteration ?? 0} 轮`,
+    '- 研究状态：`research/study.json` · 项目地图：`research/INDEX.md`',
+    '',
+    '## 目录',
+    '| 层 | 放什么 |',
+    '|---|---|',
+    '| `codes/` | 可复用代码 |',
+    '| `knowledge/` | 调研 / 文献 / 阶段报告 / 研究日志 / 发现 |',
+    '| `research/` | 研究状态、工件登记、推导、评审、决策 |',
+    '| `data/` | 原始/中间/处理后/外部数据（默认不入 git） |',
+    '| `experiments/` | 每次实验的设计、运行、日志与结果 |',
+    '| `outputs/` | 论文稿、最终图、表、投稿材料、导出 |',
+    '| `envs/` | 环境锁定 |',
+    '| `scratch/` | 临时文件（不入 git） |',
+    '',
+    '## 接手',
+    '新会话先跑 `/status`；调研 `/survey`；精读 `/paper`；推导 `/derive`；成文 `/write`；评审 `/review`。',
+    END,
+  ].join('\n')
+  const file = withinRoot(root, 'README.md')
+  const existing = await readFile(file, 'utf8').catch(() => '')
+  const next = existing.includes(BEGIN) && existing.includes(END)
+    ? existing.replace(new RegExp(`${BEGIN}[\\s\\S]*?${END}`), block)
+    : existing
+      ? `${block}\n\n${existing}`
+      : `${block}\n`
+  await writeFile(file, next, 'utf8')
 }
 
 /**
@@ -296,6 +471,7 @@ export async function ensureStudy(root, { title, question, autoCreated = false, 
         }
         existing.updatedAt = nowISO()
         await writeJsonAtomic(studyPath(root), existing)
+        await writeRootReadme(root, existing)
       }
       return { study: existing, created: false }
     }
@@ -303,6 +479,7 @@ export async function ensureStudy(root, { title, question, autoCreated = false, 
     const stamp = nowISO()
     const study = {
       schema: SCHEMA,
+      layout: LAYOUT_VERSION,
       title: title || '未命名研究',
       createdAt: stamp,
       updatedAt: stamp,
@@ -317,6 +494,7 @@ export async function ensureStudy(root, { title, question, autoCreated = false, 
       claims: [],
     }
     await writeJsonAtomic(studyPath(root), study)
+    await writeRootReadme(root, study)
     await writeIndex(root, study)
     return { study, created: true, createdPaths }
   })
@@ -339,6 +517,7 @@ async function cmdInit(args, exec) {
     const stamp = nowISO()
     const study = {
       schema: SCHEMA,
+      layout: LAYOUT_VERSION,
       title: optStr(args, 'title', '未命名研究'),
       createdAt: stamp,
       updatedAt: stamp,
@@ -352,13 +531,13 @@ async function cmdInit(args, exec) {
     }
     await pushHistory(root, study, { action: 'init', detail: `研究「${study.title}」创建`, phase: 'literature' })
     await writeJsonAtomic(studyPath(root), study)
-    await writeIndex(root, study)
+    await writeRootReadme(root, study)
     await writeIndex(root, study)
     return [
       `✓ 已创建研究：${study.title}`,
       `  清单 research/study.json`,
-      `  目录 ${createdPaths.filter((p) => p.endsWith('/')).join(' ') || '（已存在）'}`,
-      createdPaths.some((p) => p.includes('references.bib')) ? '  书目 literature/references.bib' : '  书目（已存在）',
+      `  目录 ${createdPaths.filter((p) => p.endsWith('/')).length} 个（见 README.md 的目录表）`,
+      createdPaths.some((p) => p.includes('references.bib')) ? `  书目 ${LAYOUT_V2.bib}` : '  书目（已存在）',
       study.question.text ? `  核心问题：${study.question.text}` : '  （未填核心问题，可用 study_init --question 补，或在 study_hypothesis 里给）',
       '',
       '建议顺序：literature（lit_search/lit_pdf/lit-lib）→ study_hypothesis → study_experiment → 跑代码 → record_save → study_finding。',
@@ -499,6 +678,41 @@ async function cmdHypothesis(args, exec) {
 
 // ── 4. study_experiment ────────────────────────────────────────────────────
 
+async function scaffoldExperiment(root, experiment) {
+  const dir = join(root, 'experiments', experiment.id)
+  await mkdir(join(dir, 'code'), { recursive: true })
+  await mkdir(join(dir, 'logs'), { recursive: true })
+  await mkdir(join(dir, 'results'), { recursive: true })
+  const design = join(dir, 'design.md')
+  if (!existsSync(design)) {
+    await writeFile(
+      design,
+      [
+        `# ${experiment.id} ${experiment.title}`,
+        '',
+        `- 假设：${experiment.hypothesis ?? '（未关联）'}`,
+        `- 目标：${experiment.objective ?? '（待补）'}`,
+        `- 预期：${experiment.expect ?? '（待补）'}`,
+        `- 种子：${experiment.seed ?? '（待补）'}`,
+        `- 环境：${experiment.env ?? '（待补）'}`,
+        '',
+        '## 步骤',
+        ...(experiment.plan?.length ? experiment.plan.map((p, i) => `${i + 1}. ${p}`) : ['1. （待补）']),
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+  }
+  const config = join(dir, 'config.yaml')
+  if (!existsSync(config)) {
+    await writeFile(config, `seed: ${experiment.seed ?? ''}\nenv: ${experiment.env ?? ''}\nparams: {}\n`, 'utf8')
+  }
+  const run = join(dir, 'run.sh')
+  if (!existsSync(run)) {
+    await writeFile(run, '#!/usr/bin/env bash\nset -euo pipefail\n\n# 调用 codes/ 里的模块；结果写 results/\n', 'utf8')
+  }
+}
+
 async function cmdExperiment(args, exec) {
   const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
   const title = requireStr(args, 'title')
@@ -520,6 +734,7 @@ async function cmdExperiment(args, exec) {
     const experiment = {
       id,
       title,
+      path: `experiments/${id}`,
       hypothesis: hypothesisId || undefined,
       objective: optStr(args, 'objective'),
       plan,
@@ -541,6 +756,7 @@ async function cmdExperiment(args, exec) {
     const phaseChange = PHASES.indexOf(study.loop.phase) < PHASES.indexOf('experiment')
       ? setPhase(study, 'experiment', { via: 'study_experiment' })
       : null
+    await scaffoldExperiment(root, experiment)
     await pushHistory(root, study, { action: 'experiment', detail: `新增实验 ${id}`, phase: study.loop.phase })
     await writeJsonAtomic(studyPath(root), study)
     await writeIndex(root, study)
@@ -552,7 +768,8 @@ async function cmdExperiment(args, exec) {
     if (experiment.env) lines.push(`  环境 ${experiment.env}`)
     for (const w of warnings) lines.push(`  ⚠ ${w}`)
     if (phaseChange) lines.push(`  阶段：${phaseChange.from} → ${phaseChange.to}`)
-    lines.push('', `下一步：跑完后 record_save --experiment ${id} 保存工件，再 study_finding --experiment ${id} 记录结论。`)
+    lines.push('', `目录：${experiment.path}/（design.md / config.yaml / run.sh / logs/ / results/）`)
+    lines.push(`下一步：跑完后 record_save --experiment ${id} 保存工件，再 study_finding --experiment ${id} 记录结论。`)
     return lines.join('\n')
   })
 }
@@ -684,10 +901,32 @@ async function cmdReview(args, exec) {
       issues,
       hypothesis: hypothesisId || undefined,
       experiment: optStr(args, 'experiment') || undefined,
+      path: `research/reviews/${id}.md`,
       createdAt: nowISO(),
     }
     study.reviews.push(review)
     const notes = [`评审 ${id}：${verdict}`]
+
+    await mkdir(join(root, 'research', 'reviews'), { recursive: true })
+    await writeFile(
+      join(root, 'research', 'reviews', `${id}.md`),
+      [
+        `# ${id} 评审：${target}`,
+        '',
+        `- 结论：${verdict}`,
+        `- 关联假设：${hypothesisId ?? '—'}`,
+        `- 关联实验：${review.experiment ?? '—'}`,
+        `- 日期：${review.createdAt}`,
+        '',
+        '## 摘要',
+        review.summary || '（待补）',
+        '',
+        '## 问题',
+        ...(issues.length ? issues.map((x, i) => `${i + 1}. ${x}`) : ['（无）']),
+        '',
+      ].join('\n'),
+      'utf8',
+    ).catch(() => {})
 
     if (hypothesisId) {
       const hypothesis = study.hypotheses.find((h) => h.id === hypothesisId)
@@ -708,7 +947,7 @@ async function cmdReview(args, exec) {
     await writeJsonAtomic(studyPath(root), study)
     await writeIndex(root, study)
 
-    const lines = [`✓ 已登记评审 ${id}`, `  对象：${target}`, `  结论：${verdict}`]
+    const lines = [`✓ 已登记评审 ${id}`, `  对象：${target}`, `  结论：${verdict}`, `  文档：${review.path}`]
     if (issues.length) lines.push(`  问题 ${issues.length} 条：${issues.slice(0, 3).join('；')}`)
     for (const note of notes.slice(1)) lines.push(`  ${note}`)
     return lines.join('\n')

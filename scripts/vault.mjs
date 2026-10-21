@@ -16,8 +16,8 @@
 
 import { execFile } from 'node:child_process'
 import { realpathSync } from 'node:fs'
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
@@ -32,7 +32,8 @@ import {
   withinRoot,
   writeJsonAtomic,
 } from '../vault-core.mjs'
-import { renderIndex } from '../vault-study.mjs'
+import { scaffoldProject, writeIndex, writeRootReadme } from '../vault-study.mjs'
+import { projectLayout } from '../project-layout.mjs'
 import {
   abortLoop,
   activeLoop,
@@ -113,10 +114,8 @@ async function cmdIndex(root) {
   study.claims ??= []
   study.question ??= { text: '', history: [] }
   study.loop ??= { phase: '?', iteration: 0 }
-  const records = await readIndex(root)
-  await mkdir(join(root, 'research'), { recursive: true })
-  await writeFile(paths(root).artifactIndex, renderIndex(study, records), 'utf8')
-  console.log(`✓ 已生成 research/INDEX.md（工件 ${records.records.length} 个）`)
+  await writeIndex(root, study)
+  console.log('✓ 已生成 research/INDEX.md')
 }
 
 // ── list ────────────────────────────────────────────────────────────────────
@@ -368,7 +367,8 @@ async function cmdDeprecate(root, name, flags) {
 async function cmdExport(root, flags) {
   const study = await readJson(paths(root).study, null)
   const index = await readIndex(root)
-  const outDir = withinRoot(root, flags.out ?? 'research/export')
+  const layout = await projectLayout(root)
+  const outDir = withinRoot(root, flags.out ?? layout.exports)
   await mkdir(outDir, { recursive: true })
 
   const graph = []
@@ -479,6 +479,127 @@ async function cmdExport(root, flags) {
   console.log(`✓ 已导出 ${relative(root, target)}`)
   console.log(`  实体 ${graph.length} 个 · 工件 ${index.records.length} 个 · 文献引用 ${citekeys.size} 条`)
   console.log('  说明：这是 RO-Crate 子集（工件与执行），不含原始数据本体')
+}
+
+// ── layout / migrate ───────────────────────────────────────────────────────
+
+const MIGRATE_MOVES = [
+  ['literature', 'knowledge/literature'],
+  ['data/papers', 'knowledge/literature/pdfs'],
+  ['derivations', 'experiments/derivations'],
+  ['figures', 'outputs/figures'],
+  ['manuscript', 'outputs/manuscript'],
+  ['reviews', 'research/reviews'],
+  ['analyses', 'experiments/analyses'],
+  ['research/export', 'outputs/exports'],
+  ['reports', 'knowledge/reports'],
+]
+
+const MANIFEST_PREFIXES = [
+  ['literature/', 'knowledge/literature/'],
+  ['data/papers/', 'knowledge/literature/pdfs/'],
+  ['derivations/', 'experiments/derivations/'],
+  ['figures/', 'outputs/figures/'],
+  ['manuscript/', 'outputs/manuscript/'],
+  ['reviews/', 'research/reviews/'],
+  ['analyses/', 'experiments/analyses/'],
+  ['research/export/', 'outputs/exports/'],
+  ['reports/', 'knowledge/reports/'],
+]
+
+const exists = async (p) => Boolean(await stat(p).catch(() => null))
+
+async function moveIfAbsent(src, dest, dry) {
+  if (!(await exists(src))) return false
+  if (await exists(dest)) {
+    console.log(`  · 跳过 ${src}（目标已存在）`)
+    return false
+  }
+  console.log(`  ${dry ? 'would move' : 'move'} ${src} → ${dest}`)
+  if (!dry) {
+    await mkdir(dirname(dest), { recursive: true })
+    await rename(src, dest)
+  }
+  return true
+}
+
+async function migrateSurveys(root, dry) {
+  const reports = join(root, 'reports')
+  if (!(await exists(reports))) return
+  for (const entry of await readdir(reports, { withFileTypes: true }).catch(() => [])) {
+    const fileMatch = entry.isFile() && entry.name.match(/^landscape-(.+)\.md$/)
+    const dirMatch = entry.isDirectory() && entry.name.match(/^landscape-(.+)$/)
+    if (!fileMatch && !dirMatch) continue
+    const slug = (fileMatch ?? dirMatch)[1]
+    const dest = join(root, 'knowledge', 'surveys', slug)
+    if (await exists(dest)) continue
+    console.log(`  ${dry ? 'would move' : 'move'} reports/${entry.name} → knowledge/surveys/${slug}/`)
+    if (!dry) {
+      await mkdir(dirname(dest), { recursive: true })
+      if (fileMatch) {
+        await mkdir(dest, { recursive: true })
+        await rename(join(reports, entry.name), join(dest, 'report.md'))
+      } else {
+        await rename(join(reports, entry.name), dest)
+      }
+    }
+  }
+}
+
+async function rewriteManifests(root) {
+  const recDir = join(root, 'research', 'records')
+  const dirs = await readdir(recDir, { withFileTypes: true }).catch(() => [])
+  for (const dir of dirs) {
+    if (!dir.isDirectory()) continue
+    const versions = await readdir(join(recDir, dir.name)).catch(() => [])
+    for (const version of versions) {
+      if (!/^v\d+$/.test(version)) continue
+      for (const file of ['manifest.json', 'provenance.jsonl']) {
+        const target = join(recDir, dir.name, version, file)
+        const text = await readFile(target, 'utf8').catch(() => null)
+        if (text === null) continue
+        let next = text
+        for (const [from, to] of MANIFEST_PREFIXES) next = next.split(from).join(to)
+        if (next !== text) await writeFile(target, next, 'utf8')
+      }
+    }
+  }
+}
+
+async function cmdLayout(root) {
+  const layout = await projectLayout(root)
+  console.log(`layout: ${layout.version}`)
+  for (const key of [
+    'codes', 'knowledge', 'surveys', 'literature', 'notes', 'pdfs', 'bib', 'reports', 'logs', 'findings',
+    'research', 'study', 'index', 'loops', 'records', 'reviews', 'decisions',
+    'data', 'experiments', 'derivations', 'outputs', 'manuscript', 'figures', 'tables', 'submission', 'exports',
+    'envs', 'scratch',
+  ]) {
+    console.log(`  ${key.padEnd(12)} ${layout[key]}`)
+  }
+}
+
+async function cmdMigrate(root, flags) {
+  const layout = await projectLayout(root)
+  const dry = Boolean(flags['dry-run'])
+  if (layout.version === 'v2') {
+    console.log('· 已是 v2 布局，无需迁移')
+    return
+  }
+  console.log(`迁移 v1 → v2：${root}${dry ? '（dry-run）' : ''}`)
+  await migrateSurveys(root, dry)
+  for (const [from, to] of MIGRATE_MOVES) await moveIfAbsent(join(root, from), join(root, to), dry)
+  if (dry) return
+  await scaffoldProject(root)
+  const study = await readJson(join(root, 'research', 'study.json'), null)
+  if (study) {
+    study.layout = 'v2'
+    await writeJsonAtomic(join(root, 'research', 'study.json'), study)
+    await writeRootReadme(root, study)
+    await writeIndex(root, study)
+  }
+  await rewriteManifests(root)
+  console.log('✓ 已迁移到 v2；建议 git diff 检查后提交')
 }
 
 // ── loop 子命令组 ───────────────────────────────────────────────────────────
@@ -599,6 +720,8 @@ const USAGE = `vault —— 科研记录运维
   vault prune [--keep N | --deprecated-only] [--dry-run]
   vault loop <子命令>                 约定 loop 的记账与关闭（见下）
   vault export [--out DIR]
+  vault layout                        查看当前项目布局（v1/v2）与各层路径
+  vault migrate --to v2 [--dry-run]   把 v1 项目迁移到 v2 布局
 公共参数：--root PATH`
 
 async function main() {
@@ -629,6 +752,11 @@ async function main() {
       return await cmdLoop(root, positional, flags)
     case 'export':
       return await cmdExport(root, flags)
+    case 'layout':
+      return await cmdLayout(root)
+    case 'migrate':
+      if (flags.to && flags.to !== 'v2') throw vaultErr('ERR_BAD_ARGS', '只支持 --to v2')
+      return await cmdMigrate(root, flags)
     default:
       throw vaultErr('ERR_BAD_ARGS', `未知命令 ${command}\n${USAGE}`)
   }

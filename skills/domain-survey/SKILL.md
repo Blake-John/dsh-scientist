@@ -19,7 +19,7 @@ whenToUse: 进入新方向、判断选题价值、写综述骨架、给合作者
 
 ### 0. 定框（先写下来，再检索）
 用 3–6 行写清：研究对象、要回答的决策问题、时间窗（默认近 5 年 + 奠基工作）、
-学科边界（哪些相邻领域要纳入/排除）。存到 `reports/landscape-<topic>/scope.md`。
+学科边界（哪些相邻领域要纳入/排除）。存到 `knowledge/surveys/<topic>/scope.md`。
 **决策问题**决定后续检索式；没有决策问题的调研必然发散。
 
 ### 1. 检索（多源并发，而非一个源翻十页）
@@ -32,7 +32,7 @@ whenToUse: 进入新方向、判断选题价值、写综述骨架、给合作者
 | 补全（跨库漏检） | Crossref | DOI/标题回查，补元数据 |
 | 生医 | PubMed、Europe PMC | 领域词 + MeSH 术语 |
 
-- 检索式写进 `literature/queries.md`，同义词、缩写、旧称都要覆盖（例：`diffusion model` /
+- 检索式写进 `knowledge/literature/queries.md`，同义词、缩写、旧称都要覆盖（例：`diffusion model` /
   `score-based generative model` / `denoising diffusion`）。
 - 至少两轮：第一轮宽（找流派），第二轮针对每个流派窄检索（找代表作与最新进展）。
 - 记录每次检索的源、式、命中数；**没命中也是结论**（可能是术语不同，也可能真没人做）。
@@ -60,18 +60,18 @@ whenToUse: 进入新方向、判断选题价值、写综述骨架、给合作者
 
 ### 6. 产出
 
-命令闭环的出口是**单文件主报告** `reports/landscape-<topic>.md`；
-`reports/landscape-<topic>/` 下的 scope.md / timeline.md / refs.md 是可选的中间工作笔记。
+命令闭环的出口是**单文件主报告** `knowledge/surveys/<topic>/report.md`；
+`knowledge/surveys/<topic>/` 下的 scope.md / timeline.md / refs.md 是可选的中间工作笔记。
 
 ```
-reports/landscape-<topic>.md     主报告（命令闭环的出口，下节模板）
-reports/landscape-<topic>/       可选工作笔记
+knowledge/surveys/<topic>/report.md     主报告（命令闭环的出口，下节模板）
+knowledge/surveys/<topic>/       可选工作笔记
   scope.md            决策问题与边界
   refs.md             引用清单（citekey → DOI/arXiv id → 一句话贡献）
   timeline.md         转折点时间线
 ```
 
-`reports/landscape-<topic>.md` 结构：
+`knowledge/surveys/<topic>/report.md` 结构：
 1. 一句话结论（这个方向现在处于什么状态、值不值得做、从哪切入）
 2. 边界与决策问题
 3. 流派地图（每派：假设/贡献/代价/代表工作）
@@ -82,7 +82,7 @@ reports/landscape-<topic>/       可选工作笔记
 8. 不确定性声明（检索覆盖度、没读到的语言/库、可能漏的术语）
 
 **引用格式**：正文统一用 key 式 `[@key]` 或 `\cite{key}`，条目用 `lit_bib` 落到
-`literature/references.bib`；`/survey` 的出口校验会检查报告里的每个 citekey 都能在 bib 找到。
+`knowledge/literature/references.bib`；`/survey` 的出口校验会检查报告里的每个 citekey 都能在 bib 找到。
 不要用编号制 `[1]`——`min-citations` 只统计 key 式引用。
 
 最后 `record_save` 归档报告（notes 写明检索日期与源），结论引用工件名与版本。

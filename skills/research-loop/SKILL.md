@@ -52,9 +52,9 @@ study_phase → 推进阶段
 | 命令 | 闭环 |
 |---|---|
 | `/study-init` | 建/更新项目（标题 + 核心问题） |
-| `/survey <方向>` | 调研 → `reports/landscape-<slug>.md` |
-| `/paper <DOI\|id\|标题>` | 精读 → `literature/notes/<citekey>.md` + bib |
-| `/derive <命题>` | 推导/论证 → `derivations/<id>/` |
+| `/survey <方向>` | 调研 → `knowledge/surveys/<slug>/report.md` |
+| `/paper <DOI\|id\|标题>` | 精读 → `knowledge/literature/notes/<citekey>.md` + bib |
+| `/derive <命题>` | 推导/论证 → `experiments/derivations/<id>/` |
 | `/write [目标]` | 成文 → 目标文件 + cite-check |
 | `/review [对象]` | 评审 → `study_review` |
 | `/status` | 进度 / 新会话接手 |

@@ -37,6 +37,7 @@ import {
   withinRoot,
   writeJsonAtomic,
 } from './vault-core.mjs'
+import { projectLayout } from './project-layout.mjs'
 
 const run = promisify(execFile)
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -132,7 +133,8 @@ const stamp = () => {
 
 /** 创建 loop 时快照 literature/notes 的 mtime；paper-note 只认“新建或修改过”的笔记。 */
 async function captureNotesBaseline(root) {
-  const dir = join(root, 'literature', 'notes')
+  const paths = await projectLayout(root)
+  const dir = join(root, paths.notes)
   const entries = await readdir(dir).catch(() => [])
   const notes = {}
   for (const entry of entries) {
@@ -398,7 +400,8 @@ export async function runCheck(root, loop, spec) {
     }
     case 'bib-entry': {
       const key = rest.join(':')
-      const bib = await readFile(join(root, 'literature', 'references.bib'), 'utf8').catch(() => '')
+      const paths = await projectLayout(root)
+      const bib = await readFile(join(root, paths.bib), 'utf8').catch(() => '')
       return bibHasEntry(bib, key) ? null : `references.bib 里没有条目 ${key}`
     }
     case 'citations-bib': {
@@ -409,7 +412,8 @@ export async function runCheck(root, loop, spec) {
       if (!(await stat(file).catch(() => null))?.isFile()) return `缺产物：${path}`
       const keys = await citationKeys(file)
       if (!keys.size) return `${path} 里没有 key 式引用（[@key] 或 \\cite{key}）`
-      const bib = await readFile(join(root, 'literature', 'references.bib'), 'utf8').catch(() => '')
+      const paths = await projectLayout(root)
+      const bib = await readFile(join(root, paths.bib), 'utf8').catch(() => '')
       const missing = [...keys].filter((key) => !bibHasEntry(bib, key))
       return missing.length ? `${path} 引用了 bib 里不存在的 citekey：${missing.join('、')}` : null
     }
@@ -417,7 +421,8 @@ export async function runCheck(root, loop, spec) {
       // key-agnostic：命令入口不知道 citekey（它由元数据决定），所以只要求
       // “本次 loop 新建/更新的笔记 + 模板三节有实质内容 + 笔记文件名（citekey）在 bib 里有条目”。
       const labels = (rest.join(':') || '核心主张|方法要点|局限').split('|')
-      const notesDir = join(root, 'literature', 'notes')
+      const paths = await projectLayout(root)
+      const notesDir = join(root, paths.notes)
       const entries = await readdir(notesDir).catch(() => [])
       const baseline = loop.baseline?.notes
       const hasBaseline = baseline && typeof baseline === 'object'
@@ -440,7 +445,7 @@ export async function runCheck(root, loop, spec) {
         recent.push({ entry, file, mtimeMs: info.mtimeMs })
       }
       if (!recent.length) {
-        return `literature/notes/ 下没有本次 loop 新建或更新的笔记（需含 ${labels.join('、')}）`
+        return `${paths.notes}/ 下没有本次 loop 新建或更新的笔记（需含 ${labels.join('、')}）`
       }
       recent.sort((a, b) => b.mtimeMs - a.mtimeMs)
       const complete = []
@@ -458,7 +463,7 @@ export async function runCheck(root, loop, spec) {
         const target = firstIncomplete ?? { entry: recent[0].entry, missing: labels }
         return `笔记 ${target.entry} 缺少有内容的章节：${target.missing.join('、')}`
       }
-      const bib = await readFile(join(root, 'literature', 'references.bib'), 'utf8').catch(() => '')
+      const bib = await readFile(join(root, paths.bib), 'utf8').catch(() => '')
       const withBib = complete.find((item) => bibHasEntry(bib, item.entry.replace(/\.md$/i, '')))
       return withBib
         ? null
@@ -573,7 +578,7 @@ export function describeRequirement(spec) {
     case 'citations-bib': return `\`${rest.join(':')}\` 里的 citekey 都能在 references.bib 找到`
     case 'paper-note': {
       const labels = (rest.join(':') || '核心主张|方法要点|局限').split('|')
-      return `literature/notes/ 下有本次新建或更新的笔记（${labels.join('、')} 三节有实质内容），且对应 references.bib 条目`
+      return `笔记目录下有本次新建或更新的笔记（${labels.join('、')} 三节有实质内容），且对应 references.bib 条目`
     }
     case 'min-citations': return `\`${rest[0]}\` 至少 ${rest[1]} 条编号引用`
     case 'bib-entry': return `references.bib 里有 \`${rest.join(':')}\` 条目`

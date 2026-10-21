@@ -107,7 +107,7 @@ try {
   // ── export：endTime 必须由 createdAt + durationMs 推出 ──
   await call('record_save', { root, name: 'timed', sources: ['b.txt'], command: 'python t.py', exitCode: 0, durationMs: 5000, seed: 2 })
   await vault(root, 'export')
-  const crate2 = JSON.parse(await readFile(join(root, 'research/export/ro-crate-metadata.json'), 'utf8'))
+  const crate2 = JSON.parse(await readFile(join(root, 'outputs/exports/ro-crate-metadata.json'), 'utf8'))
   const timed = crate2['@graph'].find((n) => n['@type'] === 'CreateAction' && /timed/.test(n.name))
   ok(Boolean(timed), '导出含 timed 工件')
   ok(Boolean(timed.startTime) && Boolean(timed.endTime), 'startTime/endTime 都在')
@@ -153,7 +153,7 @@ try {
   const exp = await vault(root, 'export')
   ok(exp.code === 0, `export 失败：${exp.out}`)
   ok(/已导出/.test(exp.out), 'export 输出')
-  const crate = JSON.parse(await readFile(join(root, 'research/export/ro-crate-metadata.json'), 'utf8'))
+  const crate = JSON.parse(await readFile(join(root, 'outputs/exports/ro-crate-metadata.json'), 'utf8'))
   ok(crate['@context'].includes('ro/crate/1.1'), 'RO-Crate context')
   const types = crate['@graph'].map((n) => n['@type'])
   ok(types.includes('Dataset'), '含 Dataset')

@@ -17,7 +17,7 @@ Claude Science 会把请求拆成并行轨道；这里用 subagent 实现同样�
 ## 拆分协议
 
 1. **设计轨道**：在 todo_write 中列出每条轨道（每条一个 in_progress 或多个并行）。
-2. **每条轨道独立目录**：`analyses/tracks/<track-name>/`（或对应 experiments/<id>/），轨道内自包含：README.md（任务说明）、输入、输出。
+2. **每条轨道独立目录**：`experiments/tracks/<track-name>/`（或对应 experiments/<id>/），轨道内自包含：README.md（任务说明）、输入、输出。
 3. **启动**：用 `subagent`（后台，run_in_background 默认）逐条启动；prompt 必须自包含：
    - 任务目标与验收标准
    - 输入文件路径（绝对路径）
@@ -29,7 +29,7 @@ Claude Science 会把请求拆成并行轨道；这里用 subagent 实现同样�
 ## 合并协议
 
 1. 全部轨道完成后，逐条检查回报与产物（文件存在、格式正确）。
-2. 汇总写入 `analyses/tracks/SUMMARY.md`：每条轨道的结果、质量评估、不一致处。
+2. 汇总写入 `experiments/tracks/SUMMARY.md`：每条轨道的结果、质量评估、不一致处。
 3. 重要结果统一 `record_save` 归档（含各轨道产物）。
 4. 轨道间结论冲突 → 不掩盖，列为待解决问题，必要时开一轮专门实验。
 

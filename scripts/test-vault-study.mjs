@@ -30,8 +30,8 @@ for (const n of ['study_init','study_state','study_hypothesis','study_experiment
 
 const root = await mkdtemp(join(tmpdir(), 'vault-study-'))
 try {
-  await mkdir(join(root, 'literature', 'notes'), { recursive: true })
-  await writeFile(join(root, 'literature', 'notes', 'vaswani2017attention.md'), '---\ncitekey: vaswani2017attention\n---\n')
+  await mkdir(join(root, 'knowledge', 'literature', 'notes'), { recursive: true })
+  await writeFile(join(root, 'knowledge', 'literature', 'notes', 'vaswani2017attention.md'), '---\ncitekey: vaswani2017attention\n---\n')
 
   // 未 init
   await expectErr(() => call('study_state', { root }), /ERR_NO_STUDY/, '未初始化应报错')
@@ -40,14 +40,25 @@ try {
   const init1 = await call('study_init', { root, title: 'PINN 求解器', question: 'PINN 在小样本下能否达到 FEM 精度？' })
   ok(/已创建研究/.test(init1), `init 输出：${init1.slice(0,80)}`)
   // 脚手架：目录与最小文件都要建好（不能靠模型猜）
-  for (const dir of ['literature/notes','experiments','analyses','figures','manuscript','reviews','data','envs','reports','derivations','research/records','research/loops']) {
+  for (const dir of [
+    'codes', 'knowledge/surveys', 'knowledge/literature/notes', 'knowledge/literature/pdfs',
+    'knowledge/reports', 'knowledge/logs', 'knowledge/findings',
+    'research/records', 'research/loops', 'research/reviews', 'research/decisions',
+    'data/raw', 'data/interim', 'data/processed', 'data/external',
+    'experiments', 'experiments/derivations',
+    'outputs/manuscript', 'outputs/figures', 'outputs/tables', 'outputs/submission', 'outputs/exports',
+    'envs', 'scratch',
+  ]) {
     const st = await import('node:fs/promises').then((m) => m.stat(join(root, dir)).catch(() => null))
     ok(st?.isDirectory(), `应创建目录 ${dir}`)
   }
-  ok((await import('node:fs/promises').then((m) => m.readFile(join(root, 'literature/references.bib'), 'utf8').catch(() => ''))).includes('references.bib'), '应创建 references.bib')
+  ok((await import('node:fs/promises').then((m) => m.readFile(join(root, 'knowledge/literature/references.bib'), 'utf8').catch(() => ''))).includes('references.bib'), '应创建 references.bib')
   ok((await import('node:fs/promises').then((m) => m.readFile(join(root, 'research/INDEX.md'), 'utf8').catch(() => ''))).length > 0, '应生成 INDEX.md')
+  ok((await import('node:fs/promises').then((m) => m.readFile(join(root, 'README.md'), 'utf8').catch(() => ''))).includes('目录'), '应生成根 README.md')
+  ok((await import('node:fs/promises').then((m) => m.readFile(join(root, '.gitignore'), 'utf8').catch(() => ''))).includes('data/'), '应生成 .gitignore')
 
   const study0 = JSON.parse(await readFile(join(root, 'research/study.json'), 'utf8'))
+  ok(study0.layout === 'v2', `layout 应为 v2：${study0.layout}`)
   ok(study0.loop.phase === 'literature', '初始阶段 literature')
   ok(study0.loop.iteration === 1, '初始迭代 1')
   const init2 = await call('study_init', { root })
@@ -71,6 +82,9 @@ try {
   ok(/已登记实验 E01/.test(e1), `E01：${e1.slice(0,80)}`)
   study = JSON.parse(await readFile(join(root, 'research/study.json'), 'utf8'))
   ok(study.experiments[0].id === 'E01', '编号 E01')
+  ok(study.experiments[0].path === 'experiments/E01', `实验目录：${study.experiments[0].path}`)
+  ok((await import('node:fs/promises').then((m) => m.stat(join(root, 'experiments/E01/design.md')).catch(() => null)))?.isFile(), '应建 experiments/E01/design.md')
+  ok((await import('node:fs/promises').then((m) => m.stat(join(root, 'experiments/E01/run.sh')).catch(() => null)))?.isFile(), '应建 experiments/E01/run.sh')
   ok(study.hypotheses[0].status === 'testing', 'H1 自动转 testing')
   ok(study.hypotheses[0].experiments.includes('E01'), 'H1 记住实验')
   ok(study.loop.phase === 'experiment', '阶段推进到 experiment')
@@ -111,6 +125,8 @@ try {
   const r1 = await call('study_review', { root, target: 'H4 的方法', verdict: 'refuted', hypothesis: 'H4', issues: ['基线太弱'] })
   ok(/已登记评审 R01/.test(r1), 'R01 记录')
   study = JSON.parse(await readFile(join(root, 'research/study.json'), 'utf8'))
+  ok(study.reviews[0].path === 'research/reviews/R01.md', `评审文档：${study.reviews[0].path}`)
+  ok((await import('node:fs/promises').then((m) => m.stat(join(root, 'research/reviews/R01.md')).catch(() => null)))?.isFile(), '应建 research/reviews/R01.md')
   ok(study.hypotheses.find(h => h.id === 'H4').status === 'refuted', 'H4 → refuted')
   ok(study.hypotheses.find(h => h.id === 'H4').reviews.includes('R01'), '假设记住评审 id')
 

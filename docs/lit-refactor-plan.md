@@ -1,3 +1,5 @@
+> 注：本文中的路径是 v1 布局；项目结构 v2（knowledge/surveys、experiments/derivations 等）以 [project-layout-v2.md](project-layout-v2.md) 为准。
+
 # 文献检索改造方案：57 个 MCP 工具 → 4 个原生工具
 
 > 状态：**已实施（2026-10-20）**；sci-hub 一级按用户决定未实现；**paper-search-mcp 已从插件中彻底移除**（非仅禁用）。实施差异见文末。

@@ -1,3 +1,5 @@
+> 注：本文中的路径是 v1 布局；项目结构 v2（knowledge/surveys、experiments/derivations 等）以 [project-layout-v2.md](project-layout-v2.md) 为准。
+
 # 文献库（Literature Vault）设计决定
 
 > 状态：已实施（2026-10-20）。技能 `literature-vault`，CLI `scripts/lit-lib.mjs`。

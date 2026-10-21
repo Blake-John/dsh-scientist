@@ -15,7 +15,7 @@ whenToUse: 画结果图、对比图、示意图、误差棒/分布图、论文�
 ## 目录与产物
 
 ```
-figures/<name>/
+outputs/figures/<name>/
   plot.py          出图脚本（读 data/ 或 results/，只写本目录）
   <name>.pdf       矢量主产物（论文/报告用这个）
   <name>.svg       备选矢量（可编辑）
@@ -24,7 +24,7 @@ figures/<name>/
 ```
 
 `plot.py` 必须能一条命令重跑并产出完全相同的图：
-`python figures/<name>/plot.py`；随机过程钉住 seed；不要依赖交互式操作。
+`python outputs/figures/<name>/plot.py`；随机过程钉住 seed；不要依赖交互式操作。
 
 ## 基础样式（matplotlib 模板）
 
@@ -51,7 +51,7 @@ ax.plot(x, y, label="method A")
 ax.set_xlabel("time $t$ [s]")
 ax.set_ylabel(r"energy $E$ [J]")
 ax.legend(frameon=False)
-fig.savefig("figures/<name>/<name>.pdf")
+fig.savefig("outputs/figures/<name>/<name>.pdf")
 ```
 
 - 字号下限：正文 9 pt、刻度 8 pt；**缩到单栏宽度后仍要能看清**。
@@ -81,18 +81,18 @@ fig.savefig("figures/<name>/<name>.pdf")
 示例：
 > 图 3：不同温度下反应速率常数（均值 ± 1 SD，n=5 次独立模拟）。横轴温度 [K]，
 > 纵轴 k [s⁻¹]，纵轴为对数刻度。数据 `results/rates.csv`，工件 `rates-v2`，
-> 脚本 `figures/rate-vs-T/plot.py`。
+> 脚本 `outputs/figures/rate-vs-T/plot.py`。
 
 ## 验收清单
 
-- [ ] `python figures/<name>/plot.py` 能重跑并产出同名 pdf/svg/png
+- [ ] `python outputs/figures/<name>/plot.py` 能重跑并产出同名 pdf/svg/png
 - [ ] 轴标签带单位；对数轴已标注
 - [ ] 误差棒含义写在 caption 里（或图例里）
 - [ ] 色盲友好 + 黑白可辨（线型/标记有区分）
 - [ ] 单栏缩放到 3.4 in 宽度后文字仍可读
 - [ ] caption 四要素齐全，引用了数据与工件
 - [ ] 没有截断坐标轴、没有双 Y 轴、没有 3D 装饰
-- [ ] `record_save` 归档 `figures/<name>/`（sources 含 plot.py 与数据路径）
+- [ ] `record_save` 归档 `outputs/figures/<name>/`（sources 含 plot.py 与数据路径）
 
 ## 常见坑
 

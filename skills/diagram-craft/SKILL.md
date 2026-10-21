@@ -38,7 +38,7 @@ graph LR
 - 样式克制：`classDef` 只用来区分 2–3 类语义（输入/处理/输出），不要五颜六色。
 - **限制**：单图 >50,000 字符或 >2,000 行会被拒绝渲染；布局完全自动，**节点超过 ~20 个就容易交叉线爆炸**。
 - 不适合：坐标轴、受力图、电路、分子结构、需要精确对齐的示意图 → 换 TikZ。
-- 落盘：源码存 `figures/<name>.md`（或 `.mmd`），渲染出的 SVG 存同目录，二者一起归档。
+- 落盘：源码存 `outputs/figures/<name>.md`（或 `.mmd`），渲染出的 SVG 存同目录，二者一起归档。
 
 ## §2 Graphviz —— 关系与网络
 
@@ -100,8 +100,8 @@ pdftoppm -png -r 300 figure.pdf figure     # 给对话展示用
 - [ ] 图内字号与正文同级，缩到单栏宽仍可读
 - [ ] 黑白打印可辨（线型/标记/填充纹理区分，不只靠颜色）
 - [ ] 每张图有 caption：画什么 / 各元素含义 / 数据或来源 / 生成脚本路径
-- [ ] 生成脚本可重跑（`.mmd` / `.dot` / `.tex` / `plot.py` 存 `figures/<name>/`）
-- [ ] `record_save` 归档整个 `figures/<name>/`（源码 + 产物 + caption）
+- [ ] 生成脚本可重跑（`.mmd` / `.dot` / `.tex` / `plot.py` 存 `outputs/figures/<name>/`）
+- [ ] `record_save` 归档整个 `outputs/figures/<name>/`（源码 + 产物 + caption）
 
 ## 常见坑
 

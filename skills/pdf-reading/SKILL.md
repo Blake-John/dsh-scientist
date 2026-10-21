@@ -6,7 +6,7 @@ whenToUse: 精读文献、核对论文里的公式或表格、从 PDF 抽数据�
 
 # 读 PDF（PDF Reading）
 
-> 还没拿到文件？用 `lit_pdf`（按 DOI 或 arXiv id 取全文，落到 `data/papers/<citekey>.pdf`）。
+> 还没拿到文件？用 `lit_pdf`（按 DOI 或 arXiv id 取全文，落到 `knowledge/literature/pdfs/<citekey>.pdf`）。
 > 本技能负责"拿到文件之后怎么读"。
 
 **两个工具顶掉大部分手工命令**：
@@ -48,7 +48,7 @@ pdftotext -layout -f 1 -l 1 paper.pdf - | head   # 有文本层？排版正常�
 ## 第三步：按页/按节取，不要整篇
 
 ```
-pdf_outline("data/papers/vaswani2017attention.pdf")
+pdf_outline("knowledge/literature/pdfs/vaswani2017attention.pdf")
   → 页数 15 · 文本层有 · 目录 6 项 · 公式风险页 p.3,p.5
 
 pdf_read(path, pages:"1-2", mode:"markdown")     # 摘要 + 引言

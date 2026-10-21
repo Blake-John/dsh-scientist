@@ -11,7 +11,7 @@ whenToUse: 推导新公式、复现论文推导、近似是否成立的判断、
 ## 目录约定
 
 ```
-derivations/<id>/
+experiments/derivations/<id>/
   derive.py       符号推导脚本（假设、符号约定、近似条件写在文件头）
   validate.py     交叉验证脚本（数值/量纲/极限/展开/文献对照）
   validation.md   验证记录：每条结论 → 用了哪几类验证 → 结果
@@ -102,7 +102,7 @@ for p in [(0.5, 1.0), (2.0, 3.0), (1e-3, 1.0)]:
 - 图表用 matplotlib 出 PDF/SVG，随工件归档。
 
 ### 6. 归档
-`record_save` 归档整个 `derivations/<id>/`（脚本 + validation.md + tex + 图），
+`record_save` 归档整个 `experiments/derivations/<id>/`（脚本 + validation.md + tex + 图），
 `notes` 写明：符号约定、近似区间、验证结论（通过/在哪个区间失效）、与文献的一致性。
 引用结论时写工件名与版本。
 
