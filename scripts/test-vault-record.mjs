@@ -38,6 +38,7 @@ try {
   await mkdir(join(root, 'data', 'node_modules', 'junk'), { recursive: true })
   await writeFile(join(root, 'data', 'a.csv'), 'x,y\n1,2\n')
   await writeFile(join(root, 'data', 'b.csv'), 'x,y\n3,4\n')
+  await writeFile(join(root, 'data', 'plot.py'), '# plot.py\n')
   await writeFile(join(root, 'data', 'node_modules', 'junk', 'i.js'), 'ignored')
   await writeFile(join(root, 'envs.lock.yml'), 'python: 3.11.9\n')
 
@@ -68,7 +69,7 @@ try {
   ok(manifest1.activity.durationMs === 8412, '耗时落库')
   ok(typeof manifest1.activity.runtime?.node === 'string', '运行时快照')
   ok(manifest1.activity.env?.sha256?.length === 64, 'env 哈希')
-  ok(manifest1.inputs.length === 2, `只保存 2 个文件（node_modules 被忽略），实际 ${manifest1.inputs.length}`)
+  ok(manifest1.inputs.length === 3, `只保存 3 个文件（node_modules 被忽略），实际 ${manifest1.inputs.length}`)
   ok(manifest1.raw.length === 1, 'raw 记录')
   ok(manifest1.links.citekeys[0] === 'vaswani2017attention', 'citekey 关联')
 
@@ -89,11 +90,28 @@ try {
   const manifest2 = JSON.parse(await readFile(join(root, 'research/records/loss-curve/v2/manifest.json'), 'utf8'))
   ok(manifest2.version === 2, '版本递增')
 
+  // ── verify（干净版本，必须在改 raw/脚本之前）────────────────────────────
+  const v1 = await call('record_verify', { root, name: 'Loss Curve', version: 1 })
+  ok(v1.status === 'ok', `干净版本应 ok，实际 ${v1.status}（warnings=${JSON.stringify(v1.warnings)}）`)
+  ok(v1.checked === 3, `校验 3 个文件，实际 ${v1.checked}`)
+  ok(v1.figureTrace?.ok === true, `图三向追溯应通过：${JSON.stringify(v1.figureTrace)}`)
+  ok(v1.figureTrace.raw.every((x) => x.status === 'ok'), `raw 应全部一致：${JSON.stringify(v1.figureTrace.raw)}`)
+  ok(v1.figureTrace.scripts.some((x) => x.status === 'ok'), `出图脚本应一致：${JSON.stringify(v1.figureTrace.scripts)}`)
+
   // 内容变了 → 不硬链接
   await writeFile(join(root, 'data', 'a.csv'), 'x,y\n9,9\n')
   await call('record_save', { root, name: 'Loss Curve', sources: ['data'], seed: 7 })
   const inoV3 = (await stat(join(root, 'research/records/loss-curve/v3/files/a.csv'))).ino
   ok(inoV3 !== inoV1, '内容变化时不复用硬链接')
+
+  // ── 图三向追溯：raw 变更 / 出图脚本变更 → incomplete ─────────────────────
+  const rawTamper = await call('record_verify', { root, name: 'Loss Curve', version: 1 })
+  ok(rawTamper.figureTrace.raw.some((x) => x.status === 'mismatch'), `raw 变更应检出：${JSON.stringify(rawTamper.figureTrace)}`)
+  ok(rawTamper.status === 'incomplete', `raw 变更应 incomplete：${rawTamper.status}`)
+  await writeFile(join(root, 'data', 'plot.py'), '# changed\n')
+  const scriptTamper = await call('record_verify', { root, name: 'Loss Curve', version: 1 })
+  ok(scriptTamper.figureTrace.scripts.some((x) => x.status === 'mismatch'), `脚本变更应检出：${JSON.stringify(scriptTamper.figureTrace)}`)
+  ok(scriptTamper.status === 'incomplete', `脚本变更应 incomplete：${scriptTamper.status}`)
 
   // ── 不同源含同名文件：不得静默覆盖 ──
   await mkdir(join(root, 'data2'), { recursive: true })
@@ -112,11 +130,6 @@ try {
   }
   const collideVerify = await call('record_verify', { root, name: 'collide demo' })
   ok(collideVerify.status === 'ok', `冲突消解后校验应 ok，实际 ${collideVerify.status}：${JSON.stringify(collideVerify.issues ?? collideVerify.mismatches)}`)
-
-  // ── verify（干净版本）──────────────────────────────────────────────────
-  const v1 = await call('record_verify', { root, name: 'Loss Curve', version: 1 })
-  ok(v1.status === 'ok', `干净版本应 ok，实际 ${v1.status}（warnings=${JSON.stringify(v1.warnings)}）`)
-  ok(v1.checked === 2, `校验 2 个文件，实际 ${v1.checked}`)
 
   // ── verify（破坏性用例另起工件，避免污染 v1）────────────────────────────
   await call('record_save', {

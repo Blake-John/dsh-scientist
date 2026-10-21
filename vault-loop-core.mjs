@@ -598,6 +598,46 @@ export function describeContract(loop) {
   return items
 }
 
+/** 断点续跑：把 loop 的契约、已完成、上次失败、继续方式拼成一段可注入的提示 */
+export function buildResumePrompt(loop) {
+  const contract = describeContract(loop)
+  const lines = [
+    `继续 loop ${loop.id}（${loop.kind}${loop.arg ? ` · ${loop.arg}` : ''}）`,
+    `状态：${loop.status} · 已拦停 ${loop.nudges ?? 0}/${loop.maxNudges ?? 3} · 最近动作 ${loop.lastActivity}`,
+    '',
+    '## 出口契约',
+    ...(contract.length ? contract.map((x) => `- ${x}`) : ['- （无自动校验项）']),
+    '',
+    '## 已完成的工作',
+    ...(loop.work?.length
+      ? loop.work.slice(-10).map((w) => `- ${w.at?.slice(11, 16) ?? ''} ${w.note}`)
+      : ['- （还没有 work 记录）']),
+  ]
+  const failures = loop.exit?.lastFailure?.failures ?? []
+  if (failures.length) lines.push('', '## 上次关闭失败项', ...failures.map((x) => `- ${x}`))
+  if (loop.status === 'stalled') {
+    lines.push('', '## 注意', '- loop 已 stalled；先 loop_note 记一笔即可复活并重置拦停预算')
+  }
+  lines.push(
+    '',
+    '## 继续方式',
+    '- 先读相关产物/笔记，确认已完成与未完成',
+    '- 每完成一步：loop_note(note="…")',
+    '- 全部完成：loop_close()',
+    '- 判断做不成：loop_close(failed=true, reason="…")',
+  )
+  return lines.join('\n')
+}
+
+/** 读一个未终态的 loop，返回 { loop, prompt }；新会话接手时用 */
+export async function resumeLoop(root, id) {
+  const loop = await readLoop(root, id)
+  if (TERMINAL_STATES.includes(loop.status)) {
+    throw vaultErr('ERR_LOOP_CLOSED', `loop ${id} 已结束（${loop.status}），不能续跑`)
+  }
+  return { loop, prompt: buildResumePrompt(loop) }
+}
+
 // ── 展示 ────────────────────────────────────────────────────────────────────
 
 export const LOOP_STATE_LABEL = {

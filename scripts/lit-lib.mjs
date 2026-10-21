@@ -579,6 +579,27 @@ async function cmdStats(root) {
   console.log(`\n标签 ${tagCounts.size} 个；孤儿标签（只用 1 次）：${orphans.slice(0, 10).join(', ') || '无'}`)
   const backlog = records.filter((r) => (r.read_status ?? 'unread') === 'unread').length
   console.log(`未读积压：${backlog} 条`)
+
+  // 与 research/study.json 的双向索引
+  const studyText = await readFile(join(root, 'research', 'study.json'), 'utf8').catch(() => '')
+  let used = new Set()
+  if (studyText) {
+    try {
+      const study = JSON.parse(studyText)
+      used = new Set([
+        ...(study.hypotheses ?? []).flatMap((h) => h.citekeys ?? []),
+        ...(study.decisions ?? []).flatMap((d) => d.citekeys ?? []),
+        ...(study.claims ?? []).flatMap((c) => c.evidence?.citekeys ?? []),
+      ])
+    } catch {
+      /* 坏 study.json 不影响 stats */
+    }
+  }
+  const keys = new Set(records.map((r) => r.citekey))
+  const missing = [...used].filter((k) => !keys.has(k))
+  const unused = [...keys].filter((k) => !used.has(k))
+  console.log(`研究引用：${used.size} 个 citekey · 缺笔记 ${missing.length} · 未被引用 ${unused.length}`)
+  if (missing.length) console.log(`  缺笔记：${missing.slice(0, 10).join(', ')}`)
 }
 
 async function cmdIndex(root) {

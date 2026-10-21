@@ -158,24 +158,42 @@ const LOOP_COMMANDS = [
   },
   {
     name: 'write',
-    description: '根据当前工作撰写报告/日志：读已有产物，成文并校验引用',
-    usage: '[目标文件] [--no-init] [--dry-run]',
+    description: '根据当前工作撰写报告/日志：读已有产物，成文并校验引用；支持按章节写（§N / --section N）',
+    usage: '[目标文件|§N] [--section N] [--no-init] [--dry-run]',
     argOptional: true,
     skill: null,
     maxNudges: 3,
-    plan(arg, { paths }) {
-      const target = arg ? (arg.includes('/') ? arg : `${paths.reports}/${slugify(arg, 'report')}.md`) : `${paths.reports}/progress-${today()}.md`
+    plan(arg, { paths, flags }) {
+      const sectionArg = String(arg ?? '').match(/^§\s*(\d+)$/)
+      const section = sectionArg?.[1] ?? (typeof flags?.section === 'string' ? flags.section : undefined)
+      const target = section
+        ? `${paths.manuscript}/section-${section}.md`
+        : arg
+          ? arg.includes('/')
+            ? arg
+            : `${paths.reports}/${slugify(arg, 'report')}.md`
+          : `${paths.reports}/progress-${today()}.md`
+      const mustContain = section
+        ? [`第 ${section} 节`, '引用与论断一致', 'cite-check --deep 无错误']
+        : ['引用与论断一致', 'cite-check --deep 无错误']
+      const steps = section
+        ? [
+            `只写第 ${section} 节，不重写全文`,
+            '读已有 manuscript 与 records，保持前后一致',
+            '成文后跑 cite-check --deep 自查',
+          ]
+        : [
+            '读 study.json 与 records 索引，确认要写什么',
+            '引用已有产物时写明工件名与版本',
+            '成文后跑 cite-check --deep 自查',
+          ]
       return {
         requires: [`file-since-open:${target}`],
         checks: ['cite-check-deep'],
         workMin: 0,
         artifacts: [target],
-        mustContain: ['引用与论断一致', 'cite-check --deep 无错误'],
-        steps: [
-          '读 study.json 与 records 索引，确认要写什么',
-          '引用已有产物时写明工件名与版本',
-          '成文后跑 cite-check --deep 自查',
-        ],
+        mustContain,
+        steps,
       }
     },
   },
@@ -258,11 +276,12 @@ async function renderStatus(root) {
       lines.push(`  ${loop.id}   work ${loop.work?.length ?? 0} 条${failure.length ? ` · 待补 ${failure.length} 项` : ''}`)
       for (const item of failure.slice(0, 3)) lines.push(`    · ${item}`)
     }
+    lines.push('  续跑：loop_status(resume=true) 返回契约 / 已完成 / 上次失败')
   }
   const stalled = loops.filter((l) => l.status === 'stalled')
   if (stalled.length) {
     lines.push('', '卡住（需你决定）')
-    for (const loop of stalled) lines.push(`  ${loop.id}  → /status --abort ${loop.id} 或继续 note`)
+    for (const loop of stalled) lines.push(`  ${loop.id}  → /status --abort ${loop.id}，或 loop_note 复活 / loop_status(resume=true)`)
   }
 
   if (study) {
@@ -323,7 +342,7 @@ function makeLoopHandler(ctx, spec) {
     }
 
     const layout = await projectLayout(root)
-    const plan = spec.plan(arg, { paths: layout })
+    const plan = spec.plan(arg, { paths: layout, flags })
     if (flags['dry-run']) {
       return { kind: 'success', text: buildPrompt(spec, plan, '(dry-run)', arg) }
     }

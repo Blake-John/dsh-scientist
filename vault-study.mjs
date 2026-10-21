@@ -597,6 +597,22 @@ async function cmdState(args, exec) {
       `${noRecord.length ? `（缺：${noRecord.map((e) => e.id).join(', ')}）` : ''}`,
   ]
 
+  const paths = await projectLayout(root)
+  const noteFiles = await readdir(join(root, paths.notes)).catch(() => [])
+  const noteKeys = new Set(noteFiles.filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)))
+  const usedKeys = new Set([
+    ...study.hypotheses.flatMap((h) => h.citekeys ?? []),
+    ...study.decisions.flatMap((d) => d.citekeys ?? []),
+    ...study.claims.flatMap((c) => c.evidence?.citekeys ?? []),
+  ])
+  const missingNotes = [...usedKeys].filter((k) => !noteKeys.has(k))
+  const unusedNotes = [...noteKeys].filter((k) => !usedKeys.has(k))
+  lines.push(
+    '',
+    `文献库：笔记 ${noteKeys.size} 篇 · 被研究引用 ${usedKeys.size} 个 · 缺笔记 ${missingNotes.length} · 未引用 ${unusedNotes.length}`,
+  )
+  if (missingNotes.length) lines.push(`  缺笔记：${missingNotes.slice(0, 8).join(', ')}`)
+
   if (study.hypotheses.length) {
     lines.push('', '假设：')
     for (const h of study.hypotheses) {

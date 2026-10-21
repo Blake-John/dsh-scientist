@@ -64,6 +64,10 @@ try {
     `write 中文目标：${planOf('write', '航磁补偿').artifacts[0]}`,
   )
   ok(
+    planOf('write', '§3').artifacts[0] === 'outputs/manuscript/section-3.md',
+    `write 按章节：${planOf('write', '§3').artifacts[0]}`,
+  )
+  ok(
     planOf('paper', '10.1038/nature12373').requires[0] === 'paper-note:核心主张|方法要点|局限',
     `paper 契约 key-agnostic：${planOf('paper', '10.1038/nature12373').requires}`,
   )

@@ -1,6 +1,6 @@
 # dsh-scientist 开发规划
 
-> 版本 0.4.0 · 最后更新 2026-10-21
+> 版本 0.5.0 · 最后更新 2026-10-21
 > 本文是该插件的**总纲**：目标、功能、边界、命名、角色分工、工具与技能、用户交互、科研流程、路线图。
 
 ---
@@ -190,7 +190,7 @@
 | 工具 | 用途 |
 |---|---|
 | `record_save` | 保存工件 + 登记运行：逐文件 SHA-256、命令、退出码、耗时、种子、环境、输入输出、关联 |
-| `record_verify` | 校验：哈希、缺失、**多余文件**、环境漂移、种子缺失 |
+| `record_verify` | 校验：哈希、缺失、**多余文件**、环境漂移、种子缺失、**图↔raw↔出图脚本三向追溯** |
 | `record_reproduce` | 复现指引：命令、成败、耗时、种子、环境对比、输入逐个回查哈希 |
 
 ### 7.4 研究状态（9）
@@ -198,7 +198,7 @@
 | 工具 | 用途 |
 |---|---|
 | `study_init` | 建项目（目录脚手架 + study.json），幂等；已存在可更新标题/问题 |
-| `study_state` | 全景：问题（含历史）、阶段、假设、实验、决策、评审、证据覆盖率、悬空引用 |
+| `study_state` | 全景：问题（含历史）、阶段、假设、实验、决策、评审、证据覆盖率、悬空引用、**文献库覆盖** |
 | `study_hypothesis` | 可证伪假设，`citekeys` 可选（缺失只警告） |
 | `study_experiment` | 实验计划：步骤、预期、种子、环境；proposed 假设自动转 testing |
 | `study_finding` | 观察与结论；`nextQuestion` 开启新一轮并**归档旧问题** |
@@ -213,6 +213,7 @@
 |---|---|
 | `loop_note` | 记一笔进展；`stalled` 时记账会复活并重置拦停预算 |
 | `loop_close` | 跑出口校验；不合格拒绝并列出缺项；可 `failed=true` 声明失败 |
+| `loop_status` | 看进度与出口差距；`resume=true` 返回断点续跑提示（契约/已完成/上次失败/继续方式） |
 | `loop_status` | 看进度与出口差距 |
 
 ---
@@ -237,7 +238,7 @@
 | `/survey` | `<方向>` | ✅ | landscape 报告（本次更新）+ ≥5 key 式引用 + gap 段 + citekey↔bib + work≥3 | 3 |
 | `/paper` | `<DOI\|id\|标题>` | ✅ | 笔记（本次更新）+ 核心主张/方法要点/局限三节有内容 + bib 条目 + work≥2 | 3 |
 | `/derive` | `<命题\|流程\|逻辑>` | ✅ | derive.py（本次更新）可执行 + validation.md 含验证路线 + work≥3 | **5** |
-| `/write` | `[目标]` 默认进度日志 | ✅ | 目标文件（本次更新）+ `cite-check --deep` | 3 |
+| `/write` | `[目标]` 默认进度日志；`§N` / `--section N` 按章节 | ✅ | 目标文件（本次更新）+ `cite-check --deep` | 3 |
 | `/review` | `[对象]` 默认全部未验证项 | ✅ | 新增 study_review 记录 | 3 |
 | `/status` | `[id] --brief --json --abort` | — | 只读，不建 loop、不拦停 | **0** |
 
@@ -365,9 +366,13 @@
 
 ## 15. 路线图
 
-### 已完成（0.2.x → 0.4.0）
+### 已完成（0.2.x → 0.5.0）
 
 - [x] 项目结构 v2（`codes / knowledge / research / data / experiments / outputs / envs / scratch`）+ `vault migrate`
+- [x] loop 断点续跑（`loop_status(resume=true)` + `vault loop resume`）
+- [x] `/write` 按章节（`/write §3` / `--section N`）
+- [x] 图 → 原始数据 → 脚本三向追溯（`record_verify.figureTrace`）
+- [x] 文献库 ↔ `study.json` 双向索引（`study_state` / `lit-lib stats`）
 - [x] 文献链路 4 工具（替代 paper-search-mcp 57 工具）
 - [x] PDF 读取 2 工具
 - [x] 科研记录 12 工具（record 3 + study 9）
@@ -377,16 +382,12 @@
 - [x] 强制层（3 钩子 + 拦停 + 挂起 + 四终态）
 - [x] 项目脚手架（目录 + bib + INDEX）
 
-### 待办（0.5.x 候选）
+### 待办（0.6.x 候选）
 
 | 项 | 价值 | 成本 |
 |---|---|---|
-| loop 断点续跑（重启后从 loop 恢复上下文） | 高 | 中 |
-| `/write` 支持按章节写（`/write §3`） | 中 | 低 |
 | 多假设并行竞标（简化版：并排对比而非 Elo） | 中 | 中 |
 | `vault export` 产出可投稿的 RO-Crate 包 | 中 | 低 |
-| 图 → 原始数据 → 脚本的三向追溯校验 | 高 | 中 |
-| 文献库与 `study.json` 的双向索引 | 中 | 低 |
 
 ### 已知限制
 

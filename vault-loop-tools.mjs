@@ -1,16 +1,17 @@
-// vault-loop-tools —— loop 记账工具（2 个）
+// vault-loop-tools —— loop 记账与续跑工具（3 个）
 //
 // 为什么必须有工具而不是只靠 `vault` CLI：
 //   loop 机制每一步都依赖"记账"和"关闭"，而 CLI 需要 PATH 安装、
 //   模型也不一定知道该怎么调。工具带 schema，模型能直接看到。
 //
-//   loop_note   每完成一步记一笔（同时刷新 lastActivity、复活 stalled）
-//   loop_close  跑出口校验；不合格会被拒绝并返回缺项；也可声明失败（须给原因）
+//   loop_note    每完成一步记一笔（同时刷新 lastActivity、复活 stalled）
+//   loop_close   跑出口校验；不合格会被拒绝并返回缺项；也可声明失败（须给原因）
+//   loop_status  看进度；resume=true 返回断点续跑提示（契约/已完成/上次失败）
 //
 // 查询类操作（list/show）不单独给工具：/status 命令与 pre-step 提醒已经覆盖。
 
 import { optStr, resolveRoot, vaultErr } from './vault-core.mjs'
-import { closeLoop, listLoops, noteLoop, readLoop, renderLoop, verifyExit } from './vault-loop-core.mjs'
+import { closeLoop, listLoops, noteLoop, readLoop, renderLoop, resumeLoop, verifyExit } from './vault-loop-core.mjs'
 
 export const name = 'dsh-scientist-vault-loop-tools'
 export const inject = ['tools']
@@ -83,6 +84,10 @@ async function cmdClose(args, exec) {
 async function cmdStatus(args, exec) {
   const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
   const id = optStr(args, 'loop_id')
+  if (args.resume) {
+    const loop = await resolveLoop(root, id)
+    return (await resumeLoop(root, loop.id)).prompt
+  }
   if (id) {
     const loop = await readLoop(root, id)
     const { ok, failures } = await verifyExit(root, loop)
@@ -139,11 +144,17 @@ export function apply(ctx) {
   ctx.tools.register(
     tool({
       name: 'loop_status',
-      description: '查看 loop 进度与出口契约差距。给 loop_id 看单个，省略则列出全部。',
+      description:
+        '查看 loop 进度与出口契约差距。给 loop_id 看单个，省略则列出全部；' +
+        'resume=true 返回断点续跑提示（出口契约 + 已完成 + 上次失败 + 继续方式），新会话接手时用。',
       parameters: {
         type: 'object',
         additionalProperties: false,
-        properties: { loop_id: { type: 'string' }, root: { type: 'string' } },
+        properties: {
+          loop_id: { type: 'string' },
+          resume: { type: 'boolean', description: '返回断点续跑提示' },
+          root: { type: 'string' },
+        },
       },
       presentTitle: 'Loop 状态',
       execute: cmdStatus,

@@ -96,13 +96,13 @@ Sandve 2013 可复现十条、Schnell 2015 计算实验记录本十条）。
 
 | 工具 | 作用 |
 |---|---|
-| `study_init` / `study_state` | 建项目 / 全景：问题（含历史）、阶段、假设、实验、决策、评审、证据覆盖率、悬空引用 |
+| `study_init` / `study_state` | 建项目 / 全景：问题（含历史）、阶段、假设、实验、决策、评审、证据覆盖率、悬空引用、文献库覆盖 |
 | `study_hypothesis` / `study_experiment` | 可证伪假设（可带 citekeys）/ 实验计划（步骤、预期、种子、环境） |
 | `study_finding` / `study_phase` | 观察与结论（推进假设状态，`nextQuestion` 归档旧问题）/ 阶段推进（可退一级，须给原因） |
 | `study_decision` | 决策日志：选了什么、否决了什么、为什么——纯结果记录答不出的部分 |
 | `study_review` / `study_claim` | 评审归档 / 论断绑定证据（citekey + 工件） |
 | `record_save` | 工件 + 运行：逐文件 SHA-256、命令、退出码、耗时、种子、环境、输入输出、关联 |
-| `record_verify` / `record_reproduce` | 校验（含多余文件、环境漂移、种子缺失）/ 复现指引（输入逐个回查哈希） |
+| `record_verify` / `record_reproduce` | 校验（含多余文件、环境漂移、种子缺失、图↔raw↔脚本三向追溯）/ 复现指引（输入逐个回查哈希） |
 
 **相对 dsh-science 的实质改进**：记录执行成败与耗时（PROV `actionStatus`）、随机种子（Sandve R6）、
 图的原始数据（R7）、假设↔文献、论断↔证据（R9）；换迭代时旧问题归档而非覆盖；历史溢出转 JSONL；
@@ -130,7 +130,7 @@ bash scripts/install-cli.sh          # → ~/.local/bin/{lit,lit-lib,cite-check,
 | `/survey <方向>` | 调研 | landscape 报告 + ≥5 引用 + gap |
 | `/paper <DOI\|id\|标题>` | 精读 | 笔记 + bib + 核心主张/方法要点/局限 |
 | `/derive <命题>` | 推导/论证 | derive.py 可执行 + validation.md |
-| `/write [目标]` | 成文 | 目标文件 + `cite-check --deep` |
+| `/write [目标\|§N]` | 成文 / 按章节 | 目标文件 + `cite-check --deep` |
 | `/review [对象]` | 评审 | study.json 新增 review |
 | `/status [id]` | 进度 / 接手 | 只读；`--brief` `--abort` `--json` |
 

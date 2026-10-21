@@ -71,6 +71,17 @@ try {
   ok(revived.includes(l3.id), `应命中 stalled 的 loop：${revived}`)
   const r = await readLoop(root, l3.id)
   ok(r.status === 'running' && r.nudges === 0, `复活状态：${r.status}/${r.nudges}`)
+
+  // 断点续跑：running 返回契约/已完成/继续方式；终态拒绝
+  const l4 = await createLoop(root, { kind: 'survey', arg: 'resume', requires: ['file:reports/r.md'], workMin: 2 })
+  await noteLoop(root, l4.id, '已完成一步')
+  const resumed = await call('loop_status', { resume: true })
+  ok(
+    /继续 loop/.test(resumed) && /出口契约/.test(resumed) && /已完成的工作/.test(resumed) && /继续方式/.test(resumed),
+    `resume 提示：${resumed}`,
+  )
+  const closedResume = await call('loop_status', { resume: true, loop_id: l2.id }).then(() => 'no-error', (e) => e.message)
+  ok(/已结束/.test(closedResume), `终态不能续跑：${closedResume}`)
 } finally {
   await rm(root, { recursive: true, force: true })
 }

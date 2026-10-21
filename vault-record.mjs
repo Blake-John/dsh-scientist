@@ -230,7 +230,12 @@ async function cmdSave(args, exec) {
         args.raw.filter((r) => typeof r === 'string' && r.trim()).map((r) => withinRoot(root, r)),
         { maxFileBytes: MAX_FILE_BYTES },
       )
-      raw = rawWalk.files.map((f) => ({ path: f.relPath, sha256: f.sha256, bytes: f.bytes }))
+      raw = rawWalk.files.map((f) => ({
+        path: f.relPath,
+        sourcePath: relative(root, f.absPath).split(sep).join('/'),
+        sha256: f.sha256,
+        bytes: f.bytes,
+      }))
     }
 
     const status =
@@ -443,12 +448,76 @@ async function cmdVerify(args, exec) {
   if (manifest.activity?.command && manifest.activity?.seed === undefined) {
     warnings.push('该运行未记录随机种子，无法精确复现（Sandve R6）')
   }
-  if (manifest.kind === 'figure' && !(manifest.raw ?? []).length) {
-    warnings.push('该工件是图但没有记录原始数据（Sandve R7）')
+
+  // 图的三向追溯：图工件 ↔ 原始数据 ↔ 出图脚本
+  let figureTrace = null
+  if (manifest.kind === 'figure') {
+    const rawChecks = []
+    for (const item of manifest.raw ?? []) {
+      const shown = item.sourcePath ?? item.path
+      const abs = withinRoot(root, shown)
+      const info = await stat(abs).catch(() => null)
+      if (!info?.isFile()) {
+        rawChecks.push({ path: shown, status: 'missing' })
+        continue
+      }
+      const actual = await hashFileStreaming(abs)
+      rawChecks.push({
+        path: shown,
+        status: actual === item.sha256 ? 'ok' : 'mismatch',
+        recorded: item.sha256,
+        actual,
+      })
+    }
+    const scriptChecks = []
+    for (const file of manifest.inputs ?? []) {
+      if (!/\.(py|r|jl|m|sh)$/i.test(file.path)) continue
+      const shown = file.sourcePath ?? file.path
+      const abs = withinRoot(root, shown)
+      const info = await stat(abs).catch(() => null)
+      if (!info?.isFile()) {
+        scriptChecks.push({ path: shown, status: 'missing' })
+        continue
+      }
+      const actual = await hashFileStreaming(abs)
+      scriptChecks.push({
+        path: shown,
+        status: actual === file.sha256 ? 'ok' : 'mismatch',
+        recorded: file.sha256,
+        actual,
+      })
+    }
+    figureTrace = {
+      raw: rawChecks,
+      scripts: scriptChecks,
+      ok:
+        rawChecks.length > 0 &&
+        rawChecks.every((x) => x.status === 'ok') &&
+        scriptChecks.length > 0 &&
+        scriptChecks.every((x) => x.status === 'ok'),
+    }
+    if (!rawChecks.length) warnings.push('该工件是图但没有记录原始数据（Sandve R7）')
+    for (const item of rawChecks) {
+      if (item.status === 'missing') warnings.push(`图的原始数据缺失：${item.path}`)
+      if (item.status === 'mismatch') warnings.push(`图的原始数据已变更：${item.path}`)
+    }
+    if (!scriptChecks.length) warnings.push('该图没有出图脚本（sources 里应包含 plot.py 等）')
+    for (const item of scriptChecks) {
+      if (item.status === 'missing') warnings.push(`出图脚本缺失：${item.path}`)
+      if (item.status === 'mismatch') warnings.push(`出图脚本已变更：${item.path}`)
+    }
   }
 
   const status =
-    mismatches.length || missing.length ? 'mismatch' : extras.length ? 'extra' : warnings.length ? 'ok-with-warnings' : 'ok'
+    mismatches.length || missing.length
+      ? 'mismatch'
+      : extras.length
+        ? 'extra'
+        : figureTrace && !figureTrace.ok
+          ? 'incomplete'
+          : warnings.length
+            ? 'ok-with-warnings'
+            : 'ok'
 
   return {
     name: manifest.name,
@@ -459,6 +528,7 @@ async function cmdVerify(args, exec) {
     mismatches,
     extras,
     env,
+    figureTrace,
     warnings,
     activity: manifest.activity?.actionStatus,
   }
@@ -529,8 +599,42 @@ async function cmdReproduce(args, exec) {
   }
 
   if (raw.length) {
-    lines.push('', '## 图的原始数据')
-    for (const file of raw) lines.push(`- \`${file.path}\` @ ${shortHash(file.sha256, 12)}`)
+    lines.push('', '## 图的原始数据（回查项目路径）')
+    for (const file of raw) {
+      const shown = file.sourcePath ?? file.path
+      const abs = withinRoot(root, shown)
+      const info = await stat(abs).catch(() => null)
+      if (!info?.isFile()) {
+        lines.push(`- ✗ \`${shown}\` —— 当前不存在`)
+        continue
+      }
+      const actual = await hashFileStreaming(abs)
+      lines.push(
+        actual === file.sha256
+          ? `- ✓ \`${shown}\`（哈希一致）`
+          : `- ⚠ \`${shown}\` —— 已变更（当前 ${shortHash(actual, 12)}，记录 ${shortHash(file.sha256, 12)}）`,
+      )
+    }
+  }
+
+  const scripts = (inputs ?? []).filter((file) => /\.(py|r|jl|m|sh)$/i.test(file.path))
+  if (manifest.kind === 'figure' && scripts.length) {
+    lines.push('', '## 出图脚本（回查项目路径）')
+    for (const file of scripts) {
+      const shown = file.sourcePath ?? file.path
+      const abs = withinRoot(root, shown)
+      const info = await stat(abs).catch(() => null)
+      if (!info?.isFile()) {
+        lines.push(`- ✗ \`${shown}\` —— 当前不存在`)
+        continue
+      }
+      const actual = await hashFileStreaming(abs)
+      lines.push(
+        actual === file.sha256
+          ? `- ✓ \`${shown}\`（哈希一致）`
+          : `- ⚠ \`${shown}\` —— 已变更（当前 ${shortHash(actual, 12)}，记录 ${shortHash(file.sha256, 12)}）`,
+      )
+    }
   }
 
   if (links.experiment || links.hypothesis || (links.citekeys ?? []).length) {
@@ -609,6 +713,7 @@ export function apply(ctx) {
           missing: { type: 'array' },
           mismatches: { type: 'array' },
           extras: { type: 'array' },
+          figureTrace: { type: 'object' },
           warnings: { type: 'array' },
         },
         required: ['name', 'version', 'status', 'checked'],

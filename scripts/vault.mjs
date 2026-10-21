@@ -44,6 +44,7 @@ import {
   noteLoop,
   readLoop,
   renderLoop,
+  buildResumePrompt,
   verifyExit,
 } from '../vault-loop-core.mjs'
 
@@ -660,6 +661,12 @@ async function cmdLoop(root, positional, flags) {
       const text = rest.slice(1).join(' ')
       const loop = await noteLoop(root, rest[0], text)
       console.log(`✓ 已记账（${loop.work.length} 条）`)
+      return
+    }
+    case 'resume': {
+      if (!rest[0]) throw vaultErr('ERR_BAD_ARGS', '用法：vault loop resume <id>')
+      const loop = await readLoop(root, rest[0])
+      console.log(buildResumePrompt(loop))
       return
     }
     case 'close': {

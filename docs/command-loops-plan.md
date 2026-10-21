@@ -47,7 +47,7 @@
 | `/survey` | `<方向>` | 可无项目（自动建） | `knowledge/surveys/<slug>/report.md` 本次新建或更新<br>≥5 条 key 式引用（`[@key]` / `\cite{key}`）<br>含 Markdown 方法对比表 + gap 清单<br>报告里的 citekey 都在 bib<br>work ≥3 条 | domain-survey |
 | `/paper` | `<DOI\|arXiv id\|标题>` | 可无项目（自动建） | `knowledge/literature/notes/<citekey>.md` 本次新建或更新<br>「核心主张/方法要点/局限」三节有实质内容<br>该 citekey 在 bib 有条目<br>work ≥2 条 | literature-retrieval + pdf-reading |
 | `/derive` | `<命题\|流程\|逻辑>` | 要求项目（缺则自动建） | `experiments/derivations/<id>/derive.py` 本次新建或更新且可执行<br>`validation.md` 本次新建或更新且含至少一条验证路线（数值/量纲/极限/反例/文献/小参数/不确定度）<br>work ≥3 条 | derivation-lab |
-| `/write` | `[目标]`（默认进度日志） | 要求项目 | 目标文件本次新建或更新<br>`cite-check --deep` 通过 | — |
+| `/write` | `[目标]`（默认进度日志）或 `§N` / `--section N` | 要求项目 | 目标文件本次新建或更新<br>`cite-check --deep` 通过 | — |
 | `/review` | `[对象]`（默认全部未验证项） | 要求项目 | `study.json` 新增 review 记录 | scientific-reviewer |
 | `/status` | `[loop-id]` `--abort` `--brief` `--json` | 无 | 无（只读，不创建 loop、不拦停） | — |
 
