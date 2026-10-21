@@ -91,6 +91,20 @@ const litRow = plugins.find((p) => p.id === 'lit-tools')
 if (!litRow) problems.push('缺少 lit-tools 行')
 else if (litRow.name !== 'dsh-scientist/lit-tools.mjs') problems.push(`lit-tools 的 name = ${litRow.name}`)
 
+// 科研记录两组工具（P4 加入）
+for (const [id, file] of [['vault-record', 'vault-record.mjs'], ['vault-study', 'vault-study.mjs']]) {
+  const row = plugins.find((p) => p.id === id)
+  if (!row) problems.push(`缺少 ${id} 行`)
+  else if (row.name !== `dsh-scientist/${file}`) problems.push(`${id} 的 name = ${row.name}`)
+}
+
+// 凡是 dsh-scientist/ 开头的行，对应文件必须真的存在（防拼错文件名）
+for (const row of plugins) {
+  if (typeof row.name !== 'string' || !row.name.startsWith('dsh-scientist/')) continue
+  const rel = row.name.slice('dsh-scientist/'.length)
+  if (!existsSync(join(ROOT, rel))) problems.push(`行 ${row.id} 指向不存在的文件: ${rel}`)
+}
+
 const providerRow = plugins.find((p) => p.id === 'science-skills')
 if (!providerRow) problems.push('缺少 science-skills 技能 provider 行')
 else if (providerRow.name !== 'dsh-scientist/skills-provider.mjs') {

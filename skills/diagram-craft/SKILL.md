@@ -101,7 +101,7 @@ pdftoppm -png -r 300 figure.pdf figure     # 给对话展示用
 - [ ] 黑白打印可辨（线型/标记/填充纹理区分，不只靠颜色）
 - [ ] 每张图有 caption：画什么 / 各元素含义 / 数据或来源 / 生成脚本路径
 - [ ] 生成脚本可重跑（`.mmd` / `.dot` / `.tex` / `plot.py` 存 `figures/<name>/`）
-- [ ] `artifact_save` 归档整个 `figures/<name>/`（源码 + 产物 + caption）
+- [ ] `record_save` 归档整个 `figures/<name>/`（源码 + 产物 + caption）
 
 ## 常见坑
 

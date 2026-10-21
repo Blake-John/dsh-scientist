@@ -512,31 +512,27 @@ export function apply(ctx) {
     tool({
       name: 'record_save',
       description:
-        '把分析结果/图/数据保存为版本化工件，并登记产生它的运行：逐文件 SHA-256、命令、退出码、耗时、随机种子、环境文件、' +
-        '输入输出哈希，以及到实验/假设/文献 citekey 的关联。内容相同的文件在库内部硬链接去重。' +
-        '失败运行同样保存（保留失败信息）。这是可复现链条的落点。',
+        '保存工件并登记产生它的运行：逐文件哈希、命令、退出码、耗时、种子、环境、输入输出，以及到实验/假设/文献的关联。相同内容硬链接去重；失败运行也留档。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          root: { type: 'string', description: '项目根（默认自动探测）' },
-          name: { type: 'string', description: '工件名（人类可读，会 slugify 成目录）' },
-          sources: { type: 'array', items: { type: 'string' }, description: '要保存的文件或目录（相对项目根）' },
+          root: { type: 'string' },
+          name: { type: 'string' },
+          sources: { type: 'array', items: { type: 'string' } },
           description: { type: 'string', description: '一句话说明这是什么' },
-          kind: { type: 'string', enum: ['data', 'figure', 'table', 'code', 'model', 'run', 'other'], description: '工件类型，默认 data' },
-          command: { type: 'string', description: '产生它的命令（原样粘贴，用于复现）' },
-          exitCode: { type: 'number', description: '命令退出码；0 记为成功，非 0 记为失败' },
-          durationMs: { type: 'number', description: '耗时（毫秒）' },
-          seed: { description: '随机种子（涉及随机性的运行务必记录）' },
+          kind: { type: 'string', enum: ['data', 'figure', 'table', 'code', 'model', 'run', 'other'] },
+          command: { type: 'string' },
+          exitCode: { type: 'number' },
+          durationMs: { type: 'number' },
+          seed: { description: '随机种子（涉及随机性的运行务必记录）'  },
           env: { type: 'string', description: '环境文件路径（如 envs/exp.lock.yml），会记哈希' },
           raw: { type: 'array', items: { type: 'string' }, description: '图的原始数据文件（kind=figure 时强烈建议）' },
-          experiment: { type: 'string', description: '关联的实验编号（如 E01），会回写 study.json' },
-          hypothesis: { type: 'string', description: '关联的假设编号（如 H1）' },
-          citekeys: { type: 'array', items: { type: 'string' }, description: '关联的文献 citekey' },
-          tags: { type: 'array', items: { type: 'string' }, description: '自由标签' },
-          notes: { type: 'string', description: '备注' },
-          exclude: { type: 'array', items: { type: 'string' }, description: '额外忽略规则（目录名或 *.通配）' },
-          maxFileBytes: { type: 'number', description: '单文件上限，默认 8 GiB' },
+          experiment: { type: 'string' },
+          hypothesis: { type: 'string' },
+          citekeys: { type: 'array', items: { type: 'string' } },
+          tags: { type: 'array', items: { type: 'string' } },
+          notes: { type: 'string' },
         },
         required: ['name', 'sources'],
       },
@@ -549,15 +545,14 @@ export function apply(ctx) {
     tool({
       name: 'record_verify',
       description:
-        '校验工件版本：重算每个文件的 SHA-256、报告缺失与被改、**检出目录里多出来的文件**、' +
-        '检查环境文件是否漂移、提示未记录随机种子或图的原始数据。status=ok 表示完全一致。',
+        '校验工件：重算哈希、报缺失与被改、检出目录里多余的文件、检查环境漂移与种子缺失。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          root: { type: 'string', description: '项目根（默认自动探测）' },
-          name: { type: 'string', description: '工件名' },
-          version: { type: 'number', description: '版本号，默认最新' },
+          root: { type: 'string' },
+          name: { type: 'string' },
+          version: { type: 'number' },
         },
         required: ['name'],
       },
@@ -566,9 +561,9 @@ export function apply(ctx) {
         type: 'object',
         additionalProperties: true,
         properties: {
-          name: { type: 'string' },
-          version: { type: 'number' },
-          status: { type: 'string' },
+          name: { type: 'string'  },
+          version: { type: 'number'  },
+          status: { type: 'string'  },
           checked: { type: 'number' },
           missing: { type: 'array' },
           mismatches: { type: 'array' },
@@ -585,15 +580,14 @@ export function apply(ctx) {
     tool({
       name: 'record_reproduce',
       description:
-        '输出工件的复现指引：当时的命令、退出状态、耗时、随机种子、环境文件（及其是否漂移）、' +
-        '输入文件清单并逐个校验当前磁盘上的哈希是否仍是当初那份。用于回答「这个结果还能不能重跑出来」。',
+        '输出复现指引：命令、成败、耗时、种子、环境对比，并把输入逐个按项目根回查哈希。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          root: { type: 'string', description: '项目根（默认自动探测）' },
-          name: { type: 'string', description: '工件名' },
-          version: { type: 'number', description: '版本号，默认最新' },
+          root: { type: 'string' },
+          name: { type: 'string' },
+          version: { type: 'number' },
         },
         required: ['name'],
       },

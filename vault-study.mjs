@@ -259,7 +259,7 @@ async function cmdInit(args, exec) {
       title: optStr(args, 'title', '未命名研究'),
       createdAt: stamp,
       updatedAt: stamp,
-      question: { text: optStr(args, 'question'), history: [], updatedAt: stamp },
+      question: { text: optStr(args, 'question'), history: [], updatedAt: stamp  },
       loop: { phase: 'literature', iteration: 1, history: [] },
       hypotheses: [],
       experiments: [],
@@ -722,7 +722,7 @@ async function cmdClaim(args, exec) {
 
 // ── 注册 ────────────────────────────────────────────────────────────────────
 
-const ROOT_PROP = { root: { type: 'string', description: '项目根（默认自动探测）' } }
+const ROOT_PROP = { root: { type: 'string' } }
 
 export function apply(ctx) {
   ctx.tools.register(
@@ -743,15 +743,14 @@ export function apply(ctx) {
     tool({
       name: 'study_state',
       description:
-        '研究全景：核心问题（含历史）、阶段、假设与状态、实验与工件、决策、评审、证据覆盖率（多少假设有文献支撑、多少实验有工件），' +
-        '以及悬空引用检查。开始任何研究任务前先调它。detail=true 附完整 JSON。',
+        '研究全景：核心问题（含历史）、阶段、假设、实验、决策、评审、证据覆盖率、悬空引用。detail=true 附 JSON。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          detail: { type: 'boolean', description: '附完整 study.json' },
-          historyLimit: { type: 'number', description: '最近历史条数，默认 5' },
+          detail: { type: 'boolean' },
+          historyLimit: { type: 'number' },
         },
       },
       presentTitle: '研究全景',
@@ -763,17 +762,16 @@ export function apply(ctx) {
     tool({
       name: 'study_hypothesis',
       description:
-        '登记一条可证伪的研究假设。citekeys 可选：给了会校验文献库里是否存在（缺失只警告，不阻断）。' +
-        '初始状态 proposed；结论不能在这里给，必须经 study_finding 或 study_review。',
+        '登记可证伪假设；citekeys 可选（缺失只警告）。结论不能在这里给，须经 study_finding 或 study_review。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          text: { type: 'string', description: '假设内容（一句话、可证伪）' },
-          citekeys: { type: 'array', items: { type: 'string' }, description: '支撑该假设的文献 citekey' },
-          rationale: { type: 'string', description: '为什么这么猜' },
-          question: { type: 'string', description: '若研究尚无核心问题，顺带设定' },
+          text: { type: 'string' },
+          citekeys: { type: 'array', items: { type: 'string' } },
+          rationale: { type: 'string' },
+          question: { type: 'string' },
         },
         required: ['text'],
       },
@@ -786,21 +784,20 @@ export function apply(ctx) {
     tool({
       name: 'study_experiment',
       description:
-        '登记一个验证假设的实验计划（分配 E01/E02…）：步骤、预期、随机种子、环境文件。' +
-        '关联的 proposed 假设会自动转入 testing。跑完后用 record_save --experiment 保存工件。',
+        '登记实验计划（E01…）：步骤、预期、种子、环境。关联的 proposed 假设自动转 testing。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          title: { type: 'string' },
-          hypothesis: { type: 'string', description: '关联假设编号，如 H1' },
-          objective: { type: 'string', description: '要检验什么' },
-          plan: { type: 'array', items: { type: 'string' }, description: '实验步骤' },
+          title: { type: 'string'  },
+          hypothesis: { type: 'string' },
+          objective: { type: 'string' },
+          plan: { type: 'array', items: { type: 'string' } },
           expect: { type: 'string', description: '预期结果（先写下来，避免事后合理化）' },
-          seed: { description: '随机种子' },
+          seed: { description: '随机种子'  },
           env: { type: 'string', description: '环境文件路径' },
-          status: { type: 'string', enum: ['planned', 'running', 'done', 'abandoned'] },
+          status: { type: 'string', enum: ['planned', 'running', 'done', 'abandoned']  },
         },
         required: ['title'],
       },
@@ -813,14 +810,13 @@ export function apply(ctx) {
     tool({
       name: 'study_finding',
       description:
-        '记录实验的观察与结论：finding 追加到实验；conclusion 推进关联假设状态（仅 testing 可推进）并把阶段推向 analysis；' +
-        'nextQuestion 开启下一轮——**旧问题会被归档到 question.history，不会丢失**。',
+        '记录观察与结论：conclusion 推进假设状态与阶段；nextQuestion 开启新一轮并归档旧问题。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          experiment: { type: 'string', description: '实验编号，如 E01' },
+          experiment: { type: 'string' },
           finding: { type: 'string', description: '观察/分析发现' },
           conclusion: { type: 'string', enum: ['supported', 'refuted', 'inconclusive'], description: '对关联假设的结论' },
           nextQuestion: { type: 'string', description: '下一轮研究问题（会开启新一轮迭代）' },
@@ -836,19 +832,18 @@ export function apply(ctx) {
     tool({
       name: 'study_decision',
       description:
-        '登记一条技术决策：问题是什么、选了哪个、否决了哪些、为什么、依据哪些文献。' +
-        '用于留住「当时为什么这么选」——这是纯结果记录无法回答的部分。',
+        '登记决策：问题、选择、否决项、理由、依据文献。留住「当时为什么这么选」。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          question: { type: 'string', description: '要决定的问题' },
-          chosen: { type: 'string', description: '最终选择' },
-          alternatives: { type: 'array', items: { type: 'string' }, description: '否决掉的备选' },
-          rationale: { type: 'string', description: '理由（必须写，否则决策日志没意义）' },
-          citekeys: { type: 'array', items: { type: 'string' }, description: '支撑决策的文献' },
-          experiment: { type: 'string', description: '关联实验编号' },
+          question: { type: 'string' },
+          chosen: { type: 'string' },
+          alternatives: { type: 'array', items: { type: 'string' } },
+          rationale: { type: 'string' },
+          citekeys: { type: 'array', items: { type: 'string' } },
+          experiment: { type: 'string' },
         },
         required: ['question', 'chosen', 'rationale'],
       },
@@ -861,19 +856,18 @@ export function apply(ctx) {
     tool({
       name: 'study_review',
       description:
-        '登记一次评审结论（supported/refuted/inconclusive/needs-work）：写入 reviews 列表并与假设/实验关联；' +
-        'testing 状态的假设会随评审结论推进。评审本身通常由 scientific-reviewer 技能启动子代理执行。',
+        '登记评审结论（supported/refuted/inconclusive/needs-work）；testing 假设随之推进。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          target: { type: 'string', description: '被评审的对象（假设/实验/论断）' },
-          verdict: { type: 'string', enum: ['supported', 'refuted', 'inconclusive', 'needs-work'] },
-          summary: { type: 'string' },
-          issues: { type: 'array', items: { type: 'string' } },
-          hypothesis: { type: 'string' },
-          experiment: { type: 'string' },
+          target: { type: 'string' },
+          verdict: { type: 'string', enum: ['supported', 'refuted', 'inconclusive', 'needs-work']  },
+          summary: { type: 'string'  },
+          issues: { type: 'array', items: { type: 'string' }  },
+          hypothesis: { type: 'string'  },
+          experiment: { type: 'string'  },
         },
         required: ['target', 'verdict'],
       },
@@ -886,20 +880,17 @@ export function apply(ctx) {
     tool({
       name: 'study_claim',
       description:
-        '把一句论断绑定到它的证据（文献 citekey + 工件）：写入 study.json 的 claims 并给出证据覆盖率。' +
-        '给 id 则更新已有论断的状态（unverified/supported/contradicted）。' +
-        '这是「论文里每句话都能追到结果」的落点；无证据的论断会被 cite-check --deep 列出。',
+        '把论断绑到证据（citekey + 工件）；给 id 则更新状态。无证据的论断会被 cite-check --deep 列出。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          text: { type: 'string', description: '论断原文（要写进论文/笔记的那句）' },
-          citekeys: { type: 'array', items: { type: 'string' }, description: '支撑它的文献' },
-          records: { type: 'array', items: { type: 'string' }, description: '支撑它的工件（如 rmse@v1）' },
-          status: { type: 'string', enum: CLAIM_STATUSES, description: '默认 unverified' },
-          location: { type: 'string', description: '出现在哪里（章节/文件名），可选' },
-          id: { type: 'string', description: '给 id 则更新已有论断' },
+          text: { type: 'string' },
+          citekeys: { type: 'array', items: { type: 'string' } },
+          records: { type: 'array', items: { type: 'string' } },
+          status: { type: 'string', enum: CLAIM_STATUSES },
+          id: { type: 'string' },
         },
       },
       presentTitle: '登记论断',
@@ -911,15 +902,14 @@ export function apply(ctx) {
     tool({
       name: 'study_phase',
       description:
-        '推进研究阶段：literature → hypothesis → experiment → analysis → manuscript → concluded。' +
-        '允许回退，但一次只能退一级且必须给出 reason（避免随手倒退，也避免一刀切禁止）。',
+        '推进阶段 literature→hypothesis→experiment→analysis→manuscript→concluded。回退只能一级且必须给 reason。',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           ...ROOT_PROP,
-          phase: { type: 'string', enum: PHASES },
-          reason: { type: 'string', description: '回退时必须给' },
+          phase: { type: 'string', enum: PHASES  },
+          reason: { type: 'string' },
         },
         required: ['phase'],
       },

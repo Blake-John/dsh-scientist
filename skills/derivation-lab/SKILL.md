@@ -102,7 +102,7 @@ for p in [(0.5, 1.0), (2.0, 3.0), (1e-3, 1.0)]:
 - 图表用 matplotlib 出 PDF/SVG，随工件归档。
 
 ### 6. 归档
-`artifact_save` 归档整个 `derivations/<id>/`（脚本 + validation.md + tex + 图），
+`record_save` 归档整个 `derivations/<id>/`（脚本 + validation.md + tex + 图），
 `notes` 写明：符号约定、近似区间、验证结论（通过/在哪个区间失效）、与文献的一致性。
 引用结论时写工件名与版本。
 

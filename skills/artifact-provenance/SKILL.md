@@ -6,7 +6,7 @@ whenToUse: 生成了值得保留/复现/引用的结果时；写论文引用数�
 
 # 工件与溯源（Artifacts & Provenance）
 
-每一个值得保留的结果都保存为版本化工件：`artifacts/<name>/v<N>/`，附 artifact.json（版本索引）与 provenance.md（溯源日志）。
+每一个值得保留的结果都保存为版本化工件：`research/records/<name>/v<N>/`，附 artifact.json（版本索引）与 provenance.md（溯源日志）。
 
 ## 何时归档（判据）
 
@@ -16,14 +16,14 @@ whenToUse: 生成了值得保留/复现/引用的结果时；写论文引用数�
 
 ## 归档协议
 
-1. 用 `artifact_save`，参数：
+1. 用 `record_save`，参数：
    - `name`：kebab-case 短名（如 `snp-call-gatk`）
    - `sources`：结果文件/目录（相对于项目根）
    - `command`：**产生该结果的完整命令或脚本路径**（复现的关键）
    - `inputs`：输入文件/数据（含版本，如 `data/raw/SRR123.fastq.gz`）
    - `notes`：参数、软件版本、注意事项
-2. 修改同一分析后再次 `artifact_save` → 自动生成 v2，旧版本保留可回溯。
-3. 版本间切换：`artifact_show <name> v<N>` 查看历史；复现：`artifact_reproduce <name>`。
+2. 修改同一分析后再次 `record_save` → 自动生成 v2，旧版本保留可回溯。
+3. 版本间切换：`vault show <name> v<N>` 查看历史；复现：`record_reproduce <name>`。
 
 ## 溯源记录什么（缺一不可）
 

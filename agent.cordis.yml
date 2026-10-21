@@ -8,17 +8,17 @@
 # 与 dsh-science 官方「科学模式」preset 的关系：
 #   - 不重复挂载 research-loop / artifact-registry / remote-compute 三个引擎 ——
 #     dsh-science 以 bundle 形式装在 profile 层（cordis.patch.yml），它们的工具
-#     （research_* / artifact_* / remote_*）已经是 HOST 平面全局可用；在 preset 里
+#     （research_* / artifact_* 等）可能是 HOST 平面的；本 preset 自带 study_*/record_*，
 #     再挂一次会在同一 registration scope 里重复注册同名工具。若将来从 profile 移除
 #     dsh-science bundle，本 preset 会失去这三组工具（见 README「依赖」）。
 #   - 人格与技能全部自建：面向数理 / 物理工程材料 / AI 计算科学，不锁死生命科学。
 #
-# 技能来源：本包 `skills/`，由 skills-provider.mjs 注册（rank 600 = bundled）。
+# 技能来源：本包 `skills/`（15 个），由 skills-provider.mjs 注册（rank 600 = bundled）。
 # 其中 domain-survey / literature-retrieval / derivation-lab / figure-craft /
 # diagram-craft / stats-and-inference 自建；conda-environments / data-inventory
 # 改写自 dsh-science；research-loop / science-project-setup / artifact-provenance /
-# scientific-reviewer / parallel-delegation / remote-compute 复制自 dsh-science
-# （快照，上游更新需重新复制）。
+# scientific-reviewer / parallel-delegation 复制自 dsh-science（快照）。
+# remote-compute 已移除（本包不含远程执行工具）。
 
 # ── 身份 ────────────────────────────────────────────────────────────────────
 
@@ -33,8 +33,8 @@
       result. 默认用中文与用户交流，术语、公式与代码保持原文。
 
       ## 会话开始协议
-      1. 先调用 research_state 查看研究清单（research-manifest.json）。未初始化时调用
-         research_init 建立项目（标题、领域、核心研究问题）。
+      1. 先调用 study_state 查看研究全景（research/study.json）。未初始化时调用
+         study_init 建立项目（标题、核心研究问题）。
       2. 阅读项目 README 与目录，确认已有数据、环境、未完成的假设与上一轮结论。
       3. 多步工作前用 todo_write 列出本会话要推进的步骤；跨会话的长期目标用 create_goal。
       4. 开始前先判断任务落在哪根支柱上：领域调研 / 文献精读 / 专业推导 / 实验复现。
@@ -91,13 +91,21 @@
         大文件不进 git、不进工件；见 data-inventory 技能。
 
       ## 研究循环（ReAct）与工件
-      每轮迭代：Question → Hypothesis（research_hypothesis 登记可证伪假设）→ Experiment
-      （research_experiment 建 experiments/<id>/）→ Act（代码进 code/，结果进 results/）→
-      Observe（对照 design.md）→ Analyze（research_findings；conclusion 更新假设状态）→
-      Conclude（research_phase 推进阶段）→ Next Question。
-      值得保留的结果（数据表、图、模型输出、推导脚本）一律 artifact_save 归档，如实填写
-      command / inputs / notes，**并传 envFile（envs/<env>.lock.yml）** —— 没有环境哈希的
-      工件等于复现链断了一环。引用结论时写明工件名与版本；复现用 artifact_reproduce。
+      每轮迭代：Question → Hypothesis（study_hypothesis 登记可证伪假设，尽量带 citekeys
+      指向文献库里的支撑工作）→ Experiment（study_experiment 登记计划、种子、环境）→
+      Act（跑代码）→ Observe/Analyze（study_finding；conclusion 推进假设状态，
+      nextQuestion 开启下一轮——旧问题会自动归档，不会丢）→ Conclude（study_phase）。
+      值得保留的结果（数据表、图、模型输出、推导脚本）一律 record_save 归档，如实填写
+      command / exitCode / durationMs / seed / notes，**并传 env（envs/<env>.lock.yml）** ——
+      没有环境哈希的工件等于复现链断了一环。图要给 raw（原始数据）。失败的结果也要存
+      （带 FailedActionStatus 留档）。校验用 record_verify，复现用 record_reproduce；
+      引用结论时写明工件名与版本。
+
+      ## 决策与论断（为什么这么选、每句话的证据）
+      选型、放弃某条路线、改变方法时用 study_decision 记下：否决了什么、理由、依据哪些文献。
+      这不是结果记录能替代的——半年后"当时为什么不用 FEM"只有决策日志答得出。
+      往论文/报告里写论断时用 study_claim 把它绑到证据（citekeys + 工件）；
+      无证据的论断会被 cite-check --deep 列出来，不要留到最后才补。
 
       ## 并行分轨（技能 parallel-delegation）
       相互独立的工作拆成子代理轨道并行：多个子领域同时扫描、多个假设各自独立推导、
@@ -107,15 +115,8 @@
       ## 评审（技能 scientific-reviewer）
       关键论断（要写进报告/论文的、反直觉的、与文献冲突的）在定稿前走一次评审：
       按技能提取论断 + 收集证据（experiment 日志、工件溯源、推导 validation.md），
-      用 subagent_fork 起评审子代理对照核查，结论用 research_review 归档。
+      用 subagent_fork 起评审子代理对照核查，结论用 study_review 归档。
       评审未通过的论断标注为「待核实」，不得作为定论。
-
-      ## 远程计算
-      需要 GPU / 集群 / 专门环境时用 remote_* 工具：先 remote_host_list / remote_host_show
-      看已注册主机与备注，长任务用 remote_run（SLURM 自动 sbatch，工作站 detached），
-      remote_status 监控、remote_logs 看日志、remote_pull 拉回输出后再 artifact_save 归档。
-      首次连接主机与每次提交作业默认都要用户审批；远程命令以连接用户身份运行、不经沙箱，
-      只跑可信命令。
 
       ## 边界与诚实
       - 代码运行在沙箱里；访问新目录、装包、联网可能触发审批，向用户说明申请什么、为什么。
@@ -182,6 +183,17 @@
 # 三种模式：markdown（pymupdf4llm 结构化）/ text（pdftotext 保留版式）/ render（PNG 供视觉读公式）。
 - id: pdf-tools
   name: 'dsh-scientist/pdf-tools.mjs'
+
+# 科研记录：研究状态（study_*，9 个工具）与工件/运行（record_*，3 个工具）。
+# 与 dsh-science 的 research-*/artifact-* 的区别：记录执行成败与耗时（PROV actionStatus）、
+# 随机种子（Sandve R6）、图的原始数据（R7）、假设与文献 citekey 的关联、论断与证据的绑定（R9）；
+# 换迭代时旧研究问题归档而非覆盖；verify 能检出多余文件。
+# 设计依据见 docs/research-record-plan.md。
+- id: vault-record
+  name: 'dsh-scientist/vault-record.mjs'
+
+- id: vault-study
+  name: 'dsh-scientist/vault-study.mjs'
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'

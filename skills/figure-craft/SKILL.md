@@ -92,7 +92,7 @@ fig.savefig("figures/<name>/<name>.pdf")
 - [ ] 单栏缩放到 3.4 in 宽度后文字仍可读
 - [ ] caption 四要素齐全，引用了数据与工件
 - [ ] 没有截断坐标轴、没有双 Y 轴、没有 3D 装饰
-- [ ] `artifact_save` 归档 `figures/<name>/`（sources 含 plot.py 与数据路径）
+- [ ] `record_save` 归档 `figures/<name>/`（sources 含 plot.py 与数据路径）
 
 ## 常见坑
 

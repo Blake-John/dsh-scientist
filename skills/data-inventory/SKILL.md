@@ -35,7 +35,7 @@ sha256sum data/raw/*.zip > data/checksums.txt     # 归档前必做
 ## 放置与版本库边界
 
 - `data/` **不入 git**（大文件 + 许可限制）；`.gitignore` 排除。
-- 大文件不进 `artifacts/`：工件存命令+输入哈希，数据本体留在 `data/`。
+- 大文件不进 `research/records/`：工件存命令+输入哈希，数据本体留在 `data/`。
 - 样本/实验单元清单（`data/samples.csv`、`data/cases.csv`）是分析的唯一事实来源，
   行 id 全局唯一，与原始数据一一对应。
 
@@ -60,7 +60,7 @@ sha256sum data/raw/*.zip > data/checksums.txt     # 归档前必做
 
 - 数据丢失按"来源 + 获取命令"恢复，恢复后核对 `data/checksums.txt`。
 - 论文/报告写：`数据见 data/manifest.tsv（含获取命令与校验值）`。
-- 工件 `artifact_save` 的 `inputs` 填数据路径（引擎会自动记录输入哈希）。
+- 工件 `record_save` 的 `inputs` 填数据路径（引擎会自动记录输入哈希）。
 
 ## 维护
 

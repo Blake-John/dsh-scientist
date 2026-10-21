@@ -1,6 +1,6 @@
 ---
 name: conda-environments
-description: 用 conda/uv 管理可复现的计算环境：创建、固定版本、导出 yml/lock、恢复，并把环境文件接入工件溯源（artifact_save 的 envFile）。需要装包、换环境、保证结果可复现、或复现他人/历史分析时使用。
+description: 用 conda/uv 管理可复现的计算环境：创建、固定版本、导出 yml/lock、恢复，并把环境文件接入工件溯源（record_save 的 envFile）。需要装包、换环境、保证结果可复现、或复现他人/历史分析时使用。
 whenToUse: 新建分析环境、安装科学计算依赖、复现历史结果、需要固定 Python/CUDA/编译工具链版本时。
 ---
 
@@ -52,10 +52,10 @@ uv pip freeze > envs/<env-name>.requirements.txt
 
 ## 接入工件溯源（关键）
 
-`artifact_save` 支持 `envFile` 参数：把上面的锁文件传进去，工件就带上环境哈希。
+`record_save` 支持 `env` 参数：把上面的锁文件传进去，工件就带上环境哈希。
 
 ```json
-artifact_save({
+record_save({
   "name": "ablation-results-v1",
   "sources": ["results/ablation.csv"],
   "command": "python experiments/E03/code/run_ablation.py --seeds 0-9",
@@ -86,4 +86,4 @@ uv venv .venv && uv pip sync envs/<env-name>.requirements.txt
 - 每个项目独立环境；base 只放公共工具。
 - 随机性必须钉住：`PYTHONHASHSEED`、`numpy.random.seed`、框架 seed、DataLoader worker seed。
 - 长任务用 `tool-jobs` 后台跑，日志落 `experiments/<id>/logs/`。
-- 远程机器上的环境用 `remote_host_notes` 记录激活方式，作业脚本里显式 `conda activate`。
+- 跨机器复现时把锁文件路径写进 `record_save` 的 `env` 参数，并在笔记里记下该机器的激活方式（本 preset 不含远程执行工具）。

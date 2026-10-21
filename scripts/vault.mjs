@@ -6,7 +6,8 @@
  *   vault list [--kind K] [--tag T]
  *   vault show <name> [--version N]
  *   vault diff <name> [--from N] [--to N]
- *   vault prune [--keep N | --deprecated-only] [--dry-run]
+ *   vault deprecate <name> [--version N] [--reason 文本]
+  vault prune [--keep N | --deprecated-only] [--dry-run]
  *   vault export [--out DIR]    导出 RO-Crate 子集（可交给审稿人/存档）
  *
  * 设计依据：Sandve 2013 R9（文字连到结果）、RO-Crate 1.1（内容寻址与 CreateAction）。
@@ -301,6 +302,35 @@ async function cmdPrune(root, flags) {
   })
 }
 
+// ── deprecate ───────────────────────────────────────────────────────────────
+
+async function cmdDeprecate(root, name, flags) {
+  const reason = typeof flags.reason === 'string' ? flags.reason : ''
+  return await withFileLock(paths(root).lock, {}, async () => {
+    const { dir, art } = await loadArtifact(root, name)
+    const versions = flags.version ? [Number(flags.version)] : art.versions.map((v) => v.version)
+    const mark = { at: nowISO(), reason }
+    for (const v of versions) {
+      const manifestPath = join(dir, `v${v}`, 'manifest.json')
+      const manifest = await readJson(manifestPath, null)
+      if (!manifest) throw vaultErr('ERR_NOT_FOUND', `${name} 没有 v${v}`)
+      manifest.deprecated = mark
+      await writeJsonAtomic(manifestPath, manifest)
+      const entry = art.versions.find((x) => x.version === v)
+      if (entry) entry.deprecated = true
+    }
+    if (!flags.version) art.deprecated = mark
+    art.updatedAt = nowISO()
+    await writeJsonAtomic(join(dir, 'artifact-manifest.json'), art)
+    const index = await readIndex(root)
+    const summary = index.records.find((r) => r.slug === art.slug)
+    if (summary) summary.deprecated = Boolean(art.deprecated ?? art.versions.every((v) => v.deprecated))
+    await writeJsonAtomic(paths(root).index, index)
+    console.log(`✓ 已标记废弃 ${name} ${flags.version ? `v${flags.version}` : '全部版本'}${reason ? `：${reason}` : ''}`)
+    console.log('  废弃不等于删除：内容仍在，vault list/show 会显示标记；需要回收用 vault prune --deprecated-only')
+  })
+}
+
 // ── export（RO-Crate 子集）─────────────────────────────────────────────────
 
 async function cmdExport(root, flags) {
@@ -421,6 +451,7 @@ const USAGE = `vault —— 科研记录运维
   vault list [--kind K] [--tag T]
   vault show <name> [--version N]
   vault diff <name> [--from N] [--to N] [--patch]
+  vault deprecate <name> [--version N] [--reason 文本]
   vault prune [--keep N | --deprecated-only] [--dry-run]
   vault export [--out DIR]
 公共参数：--root PATH`
@@ -446,6 +477,9 @@ async function main() {
       return await cmdDiff(root, positional[1], flags)
     case 'prune':
       return await cmdPrune(root, flags)
+    case 'deprecate':
+      if (!positional[1]) throw vaultErr('ERR_BAD_ARGS', '用法：vault deprecate <name> [--version N] [--reason 文本]')
+      return await cmdDeprecate(root, positional[1], flags)
     case 'export':
       return await cmdExport(root, flags)
     default:
@@ -460,4 +494,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   })
 }
 
-export { cmdIndex, cmdList, cmdShow, cmdDiff, cmdPrune, cmdExport, lineStats, main }
+export { cmdIndex, cmdList, cmdShow, cmdDiff, cmdPrune, cmdDeprecate, cmdExport, lineStats, main }

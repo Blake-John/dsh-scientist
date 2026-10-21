@@ -1,12 +1,12 @@
 ---
 name: science-project-setup
-description: 初始化或整理一个科研项目：目录约定、研究清单（research-manifest.json）、数据与权限边界。新建项目、换工作区、或整理混乱的项目时使用。
+description: 初始化或整理一个科研项目：目录约定、研究清单（research/study.json）、数据与权限边界。新建项目、换工作区、或整理混乱的项目时使用。
 whenToUse: 开始新科研项目、把已有材料组织成可运行的研究项目、或迁移项目目录时。
 ---
 
 # 科研项目初始化与组织
 
-项目根 = 工作区根（自动探测：含 `.dsh` 或 `.git` 的目录）。研究状态统一由 `research-manifest.json` 维护。
+项目根 = 工作区根（自动探测：含 `.dsh` 或 `.git` 的目录）。研究状态统一由 `research/study.json` 维护。
 
 ## 目录约定
 
@@ -14,7 +14,7 @@ whenToUse: 开始新科研项目、把已有材料组织成可运行的研究项
 | --- | --- | --- |
 | `experiments/<id>/` | 每个实验一个目录：design.md、log.md、code/、results/ | 代码入，大结果出 |
 | `literature/` | 文献笔记、`references.bib`、检索记录 | 入 |
-| `artifacts/<name>/` | 版本化工件：v<N>/、artifact.json、provenance.md | 入（小文件） |
+| `research/records/<name>/` | 版本化工件：v<N>/、artifact.json、provenance.md | 入（小文件） |
 | `analyses/` | 分析脚本（可复用流水线） | 入 |
 | `figures/` | 成稿图表 | 入 |
 | `manuscript/` | 论文草稿 | 入 |
@@ -24,7 +24,7 @@ whenToUse: 开始新科研项目、把已有材料组织成可运行的研究项
 
 ## 初始化步骤
 
-1. 若 `research-manifest.json` 不存在：`research_init`（title、domain、question）。
+1. 若 `research/study.json` 不存在：`study_init`（title、domain、question）。
 2. 写/更新项目 `README.md`：项目目标、数据来源、运行方式。
 3. 检查 `data/`：登记数据清单（见 data-inventory 技能）。
 4. 配置 `.gitignore`：排除 `data/`、大结果文件、临时文件。

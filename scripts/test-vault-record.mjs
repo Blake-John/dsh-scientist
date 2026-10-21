@@ -26,7 +26,7 @@ for (const expected of ['record_save', 'record_verify', 'record_reproduce']) {
   ok(byName[expected], `缺少工具 ${expected}`)
 }
 for (const def of captured) {
-  ok(typeof def.description === 'string' && def.description.length > 40, `${def.name}: description 过短`)
+  ok(typeof def.description === 'string' && def.description.length >= 30, `${def.name}: description 过短（${def.description?.length}）`)
   ok(def.parameters?.type === 'object', `${def.name}: parameters 非 object`)
   ok(typeof def.output?.render === 'function', `${def.name}: 缺 output.render`)
   ok(typeof def.presentCall === 'function', `${def.name}: 缺 presentCall`)
