@@ -1,6 +1,6 @@
 {
   "name": "dsh-scientist",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "科学家模式 — 面向数理/物理工程材料/AI 计算科学的 DSH agent preset：领域调研、文献检索（lit_* 4 个原生工具）、专业推导（sympy + pint + uncertainties + LaTeX）、出图与统计规范、版本化工件与溯源。",
   "type": "module",
   "license": "Apache-2.0",

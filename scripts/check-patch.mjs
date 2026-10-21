@@ -7,7 +7,7 @@
  *
  * 用法：node scripts/check-patch.mjs [patch.yml]
  */
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
@@ -16,6 +16,20 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const patchPath = resolve(process.argv[2] ?? join(ROOT, 'cordis.patch.yml'))
 const checkout = process.env.DSH_CHECKOUT ?? '/home/blake/workspaces/dsh/deepseek-harness'
+
+// ── 不依赖 checkout 的文本级断言（CI 环境也能跑）────────────────────────────
+// 历史 bug：persona 行把 config 的 `prefix` 写成 `text`，YAML 结构校验全过，
+// 挂载时插件 schema 报 "prefix required"。这里做最廉价的一道拦截。
+const rawPatch = await readFile(patchPath, 'utf8').catch(() => '')
+const textKeyHits = [...rawPatch.matchAll(/^\s{8,}text:\s*[|>]/gm)].length
+if (textKeyHits) {
+  console.error(`✗ patch 中出现 ${textKeyHits} 处裸 \`text:\` 配置键——persona 插件要求的是 \`prefix:\``)
+  process.exit(1)
+}
+if (!/^\s{8,}prefix:\s*[|>]/m.test(rawPatch)) {
+  console.error('✗ patch 中找不到 persona 的 `prefix:` 文本块')
+  process.exit(1)
+}
 
 const includeEntry = join(checkout, 'vendor/include/lib/index.js')
 if (!existsSync(includeEntry)) {
@@ -97,6 +111,86 @@ for (const row of plugins) {
   }
 }
 
+
+// ── 插件 config 字段审计 ────────────────────────────────────────────────────
+// 曾经踩过的坑：persona 行把 `prefix` 写成了 `text`，YAML 结构校验全过，
+// 但挂载时插件 schema 报 "prefix required"。这里直接读插件源码的 z.object 定义比对。
+function auditConfigs(list, checkoutRoot, problems) {
+  const nameToSrc = new Map()
+  const skipDirs = new Set(['node_modules', 'lib', 'dist', 'tests', 'test'])
+  const walk = (dir, depth = 0) => {
+    if (depth > 4) return
+    let entries
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      return
+    }
+    if (entries.includes('package.json') && entries.includes('src')) {
+      try {
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+        const srcDir = join(dir, 'src')
+        for (const file of readdirSync(srcDir)) {
+          if (!file.endsWith('.ts')) continue
+          const full = join(srcDir, file)
+          if (readFileSync(full, 'utf8').includes('const Config')) {
+            nameToSrc.set(pkg.name, full)
+            break
+          }
+        }
+      } catch {
+        /* 忽略坏包 */
+      }
+    }
+    for (const entry of entries) {
+      if (skipDirs.has(entry) || entry.startsWith('.')) continue
+      const child = join(dir, entry)
+      try {
+        if (statSync(child).isDirectory()) walk(child, depth + 1)
+      } catch {
+        /* 忽略 */
+      }
+    }
+  }
+  for (const base of ['packages', 'apps']) walk(join(checkoutRoot, base))
+
+  const flatten = (rows, out = []) => {
+    for (const row of rows) {
+      out.push(row)
+      if (Array.isArray(row.group)) flatten(row.group, out)
+      if (Array.isArray(row.config?.plugins)) flatten(row.config.plugins, out)
+    }
+    return out
+  }
+
+  let checked = 0
+  for (const row of flatten(list)) {
+    if (!row.config || typeof row.config !== 'object') continue
+    const used = Object.keys(row.config).filter((key) => key !== 'plugins')
+    if (!used.length) continue
+    if (!String(row.name).startsWith('@deepseek-ai/')) continue
+    const srcPath = nameToSrc.get(row.name)
+    if (!srcPath) {
+      problems.push(`${row.id}: 找不到 ${row.name} 的源码，无法校验 config 字段`)
+      continue
+    }
+    const text = readFileSync(srcPath, 'utf8')
+    const start = text.indexOf('const Config')
+    const body = start >= 0 ? /z\.object\(\{([\s\S]*?)\n\}\)/.exec(text.slice(start, start + 4000)) : null
+    if (!body) continue
+    const allowed = new Set([...body[1].matchAll(/^\s{2}([a-zA-Z]\w*)\s*:/gm)].map((m) => m[1]))
+    if (!allowed.size) continue
+    checked += 1
+    const unknown = used.filter((key) => !allowed.has(key))
+    if (unknown.length) {
+      problems.push(`${row.id}: config 含 ${row.name} 不接受的字段 ${unknown.join(', ')}（合法：${[...allowed].join(', ')}）`)
+    }
+  }
+  return checked
+}
+
+const audited = auditConfigs(plugins, checkout, problems)
+if (audited) console.log(`  config 字段审计: ${audited} 行`)
 console.log(`patch: ${patchPath}`)
 console.log(`  顶层 patch 条目: ${doc.length}`)
 console.log(`  preset: id=${row.config?.id} name=${row.config?.name} order=${row.config?.order}`)

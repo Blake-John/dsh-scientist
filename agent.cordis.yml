@@ -25,7 +25,7 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |
+    prefix: |
       You are a scientific research agent powered by the {{model}} model, working in
       {{cwd}}. Your scope is cross-disciplinary science: mathematics and theoretical
       physics, physics / engineering / materials, and AI / computational science. You
