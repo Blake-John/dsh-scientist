@@ -13,7 +13,7 @@
 
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { copyFile, link, mkdir, open, readdir, readFile, rename, rm, stat, lstat, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, link, mkdir, open, readdir, readFile, rename, rm, stat, lstat, unlink, utimes, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 
 export class VaultError extends Error {
@@ -110,12 +110,28 @@ export async function appendJsonl(file, entry) {
 
 // ── 文件锁 ──────────────────────────────────────────────────────────────────
 
+/** 进程是否还活着（EPERM 说明存在但无权限，也算活着） */
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return null
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error.code === 'EPERM' ? true : false
+  }
+}
+
 /**
- * 跨进程串行化。用 O_EXCL 创建锁文件；陈旧锁（超过 staleMs 未更新）会被回收。
- * 单写者模型下的最小可用实现：不做租约续期，靠 staleMs 兜住崩溃残留。
+ * 跨进程串行化。用 O_EXCL 创建锁文件。
+ *
+ * 两个关键点（都曾出错，见 docs/research-record-plan.md「实施中发现并修正的实现缺陷」）：
+ *   1. **持锁期间心跳续期**：长任务（大目录复制）的锁若只靠创建时间判断，超过 staleMs
+ *      就会被别人当成陈旧锁抢走 → 两个写者同时改 manifest/index。心跳让 mtime 始终新鲜。
+ *   2. **抢锁前看 PID 是否还活着**：进程崩溃留下的锁可以立即回收，不用干等 staleMs。
  */
 export async function withFileLock(lockPath, { timeoutMs = 10000, staleMs = 30000 } = {}, fn) {
   const started = Date.now()
+  const beatMs = Math.max(50, Math.floor(staleMs / 3))
   await mkdir(dirname(lockPath), { recursive: true })
   for (;;) {
     let handle
@@ -124,18 +140,33 @@ export async function withFileLock(lockPath, { timeoutMs = 10000, staleMs = 3000
       await handle.writeFile(JSON.stringify({ pid: process.pid, at: nowISO() }))
       await handle.close()
       handle = null
+      // 心跳：持锁期间不断刷新 mtime，避免被误判为陈旧
+      const beat = setInterval(() => {
+        const now = new Date()
+        utimes(lockPath, now, now).catch(() => {})
+      }, beatMs)
+      beat.unref?.()
       try {
         return await fn()
       } finally {
+        clearInterval(beat)
         await rm(lockPath, { force: true })
       }
     } catch (error) {
       if (handle) await handle.close().catch(() => {})
       if (error?.code !== 'EEXIST') throw error
       const info = await stat(lockPath).catch(() => null)
-      if (info && Date.now() - info.mtimeMs > staleMs) {
-        await rm(lockPath, { force: true })
-        continue
+      if (info) {
+        const holder = await readFile(lockPath, 'utf8')
+          .then((text) => JSON.parse(text))
+          .catch(() => null)
+        const alive = pidAlive(holder?.pid)
+        const expired = Date.now() - info.mtimeMs > staleMs
+        // 持锁进程已死 → 立即回收；否则只有确认过期（心跳已停）才抢
+        if (alive === false || expired) {
+          await rm(lockPath, { force: true })
+          continue
+        }
       }
       if (Date.now() - started > timeoutMs) {
         throw vaultErr('ERR_LOCK_TIMEOUT', `等待文件锁超时（${timeoutMs}ms）：${lockPath}`)
@@ -218,7 +249,7 @@ export async function walkSources(inputs, options = {}) {
   const { maxFileBytes = 8 * 1024 ** 3, followSymlinks = false, excludes = [] } = options
   const files = []
   const skipped = []
-  const seeen = new Set()
+  const seenPaths = new Set()
 
   const visit = async (absPath, baseDir, shownPath) => {
     let info
@@ -258,11 +289,11 @@ export async function walkSources(inputs, options = {}) {
       return
     }
     const real = resolve(absPath)
-    if (seeen.has(real)) {
+    if (seenPaths.has(real)) {
       skipped.push({ path: shownPath, reason: 'duplicate-input' })
       return
     }
-    seeen.add(real)
+    seenPaths.add(real)
     files.push({
       shownPath,
       absPath: real,

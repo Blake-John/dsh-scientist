@@ -22,9 +22,8 @@
 // 同内容只在库内部之间去重。
 
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import {
   appendJsonl,
@@ -46,6 +45,7 @@ import {
   withinRoot,
   writeJsonAtomic,
 } from './vault-core.mjs'
+import { renderIndex } from './vault-study.mjs'
 
 export const name = 'dsh-scientist-vault-record'
 export const inject = ['tools']
@@ -139,10 +139,30 @@ async function cmdSave(args, exec) {
   if (!sources.length) throw vaultErr('ERR_BAD_ARGS', 'sources 至少给一个文件或目录')
 
   const absSources = sources.map((s) => withinRoot(root, s))
-  const walk = await walkSources(absSources, {
-    maxFileBytes: optInt(args, 'maxFileBytes') ?? MAX_FILE_BYTES,
-    excludes: Array.isArray(args.exclude) ? args.exclude : [],
-  })
+  // 逐源遍历：需要知道每个文件来自哪个源，才能在「不同源含同名文件」时避免互相覆盖
+  const walk = { files: [], skipped: [] }
+  for (const [index, abs] of absSources.entries()) {
+    const one = await walkSources([abs], { maxFileBytes: MAX_FILE_BYTES })
+    const sourceTag = basename(abs) || `source${index + 1}`
+    for (const file of one.files) walk.files.push({ ...file, sourceTag })
+    walk.skipped.push(...one.skipped)
+  }
+  // 冲突消解：同一路径且内容不同 → 加源名前缀，绝不让后一个静默覆盖前一个
+  const usedDest = new Map()
+  for (const file of walk.files) {
+    let dest = file.relPath
+    if (usedDest.has(dest) && usedDest.get(dest) !== file.sha256) {
+      dest = `${file.sourceTag}/${file.relPath}`
+      let n = 1
+      while (usedDest.has(dest) && usedDest.get(dest) !== file.sha256) {
+        dest = `${file.sourceTag}-${n}/${file.relPath}`
+        n += 1
+      }
+      file.renamedFrom = file.relPath
+    }
+    usedDest.set(dest, file.sha256)
+    file.destPath = dest
+  }
   if (!walk.files.length) {
     throw vaultErr('ERR_NO_FILES', `没有可保存的文件（跳过 ${walk.skipped.length} 项，例如：${walk.skipped
       .slice(0, 3)
@@ -171,7 +191,7 @@ async function cmdSave(args, exec) {
     const byHash = await readJson(paths(root).byHash, {})
     const stored = []
     for (const file of walk.files) {
-      const dest = join(filesDir, file.relPath)
+      const dest = join(filesDir, file.destPath)
       await mkdir(dirname(dest), { recursive: true })
       const known = byHash[file.sha256]
       const knownAbs = known ? join(paths(root).recordsDir, known) : null
@@ -185,7 +205,8 @@ async function cmdSave(args, exec) {
         byHash[file.sha256] = relToRecords(root, dest)
       }
       stored.push({
-        path: file.relPath, // 版本目录内的相对路径
+        path: file.destPath, // 版本目录内的相对路径（冲突时已加源名前缀）
+        renamedFrom: file.renamedFrom,
         sourcePath: relative(root, file.absPath).split(sep).join('/'), // 相对项目根，供复现时回查
         sha256: file.sha256,
         bytes: file.bytes,
@@ -291,8 +312,24 @@ async function cmdSave(args, exec) {
     else index.records.push(summary)
     await writeJsonAtomic(paths(root).index, index)
 
+    // 有研究清单就顺手刷新 INDEX.md，避免工件表停在旧状态
+    const studyForIndex = await readJson(paths(root).study, null)
+    if (studyForIndex) {
+      try {
+        await writeFile(join(root, 'research', 'INDEX.md'), renderIndex(studyForIndex, index), 'utf8')
+      } catch {
+        /* 索引刷新失败不影响保存本身 */
+      }
+    }
+
     // 与 study.json 联动（存在才更新）
     let linkedToExperiment = null
+    if (manifest.links.hypothesis) {
+      const study = await readJson(paths(root).study, null)
+      if (study && !(study.hypotheses ?? []).some((h) => h.id === manifest.links.hypothesis)) {
+        warnings.push(`study.json 里没有假设 ${manifest.links.hypothesis}，该关联无效`)
+      }
+    }
     if (manifest.links.experiment) {
       const study = await readJson(paths(root).study, null)
       if (study) {
@@ -320,6 +357,10 @@ async function cmdSave(args, exec) {
     if (env) lines.push(`  环境 ${env.file} @ ${shortHash(env.sha256)}`)
     if (manifest.links.experiment) lines.push(`  关联实验 ${linkedToExperiment ?? manifest.links.experiment}（未生效）`)
     if (manifest.links.citekeys.length) lines.push(`  关联文献 ${manifest.links.citekeys.join(', ')}`)
+    const renamed = stored.filter((f) => f.renamedFrom)
+    if (renamed.length) {
+      lines.push(`  同名冲突已消解 ${renamed.length} 个：` + renamed.slice(0, 3).map((f) => `${f.renamedFrom} → ${f.path}`).join('; '))
+    }
     if (walk.skipped.length) {
       lines.push(`  跳过 ${walk.skipped.length} 项：` + walk.skipped.slice(0, 3).map((s) => `${s.path}(${s.reason})`).join('; '))
     }
@@ -469,7 +510,7 @@ async function cmdReproduce(args, exec) {
   }
   if (activity.gitCommit) lines.push(`- 代码版本：git \`${activity.gitCommit}\``)
 
-  lines.push('', '## 输入（校验当前磁盘上的文件是否仍是当初那份）')
+  lines.push('', '## 文件（回查原路径，确认磁盘上还是当初那份）')
   if (!inputs.length) lines.push('- 无记录')
   for (const file of inputs) {
     const shown = file.sourcePath ?? file.path

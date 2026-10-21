@@ -86,6 +86,36 @@ try {
   const diffSingle = await vault(root, 'diff', 'single')
   ok(diffSingle.code !== 0 && /只有一个版本/.test(diffSingle.out), `单版本应拒绝：${diffSingle.out}`)
 
+  // ── diff 默认对比「上一版」而不是最旧版 ──
+  await writeFile(join(root, 'c.txt'), 'v1\n')
+  await call('record_save', { root, name: 'three', sources: ['c.txt'] })
+  await writeFile(join(root, 'c.txt'), 'v2\n')
+  await call('record_save', { root, name: 'three', sources: ['c.txt'] })
+  await writeFile(join(root, 'c.txt'), 'v3\n')
+  await call('record_save', { root, name: 'three', sources: ['c.txt'] })
+  const diff3 = await vault(root, 'diff', 'three')
+  ok(/v2 → v3/.test(diff3.out), `默认应对比 v2→v3，实际：${diff3.out.split('\n')[0]}`)
+
+  // ── deprecate ──
+  const dep = await vault(root, 'deprecate', 'three', '--version', '1', '--reason', '实验作废')
+  ok(/已标记废弃 three v1/.test(dep.out), `deprecate：${dep.out}`)
+  const depManifest = JSON.parse(await readFile(join(root, 'research/records/three/v1/manifest.json'), 'utf8'))
+  ok(depManifest.deprecated?.reason === '实验作废', '废弃原因已落库')
+  const listAfterDep = await vault(root, 'list')
+  ok(/results|three/.test(listAfterDep.out), 'list 仍可见')
+
+  // ── export：endTime 必须由 createdAt + durationMs 推出 ──
+  await call('record_save', { root, name: 'timed', sources: ['b.txt'], command: 'python t.py', exitCode: 0, durationMs: 5000, seed: 2 })
+  await vault(root, 'export')
+  const crate2 = JSON.parse(await readFile(join(root, 'research/export/ro-crate-metadata.json'), 'utf8'))
+  const timed = crate2['@graph'].find((n) => n['@type'] === 'CreateAction' && /timed/.test(n.name))
+  ok(Boolean(timed), '导出含 timed 工件')
+  ok(Boolean(timed.startTime) && Boolean(timed.endTime), 'startTime/endTime 都在')
+  const gap = Date.parse(timed.endTime) - Date.parse(timed.startTime)
+  ok(gap === 5000, `endTime 应为 start+5000ms，实际差 ${gap}ms`)
+  ok(timed.object === undefined, '不虚构 object（本工具不区分输入输出）')
+  ok(Array.isArray(timed.result) && timed.result.length > 0, 'result 指向文件实体')
+
   // ── prune ──
   const pruneNoArg = await vault(root, 'prune')
   ok(pruneNoArg.code !== 0 && /--keep/.test(pruneNoArg.out), '无参数 prune 应拒绝')
@@ -98,6 +128,15 @@ try {
   ok(/已清理/.test(real.out), `真删：${real.out}`)
   ok(!(await stat(join(root, 'research/records/results/v1')).catch(() => null)), 'v1 已删除')
   ok(Boolean(await stat(join(root, 'research/records/results/v2')).catch(() => null)), '最新版保留')
+
+  // ── prune 清理 by-hash 死条目 ──
+  const byHashBefore = JSON.parse(await readFile(join(root, 'research/records/by-hash.json'), 'utf8').catch(() => '{}'))
+  await vault(root, 'prune', '--keep', '1')
+  const byHashAfter = JSON.parse(await readFile(join(root, 'research/records/by-hash.json'), 'utf8').catch(() => '{}'))
+  const alive = (rel) => stat(join(root, 'research/records', rel)).then((i) => i.isFile()).catch(() => false)
+  let dangling = 0
+  for (const rel of Object.values(byHashAfter)) if (!(await alive(rel))) dangling += 1
+  ok(dangling === 0, `by-hash 不应残留死条目（${dangling} 个）`)
 
   const artManifest = JSON.parse(await readFile(join(root, 'research/records/results/artifact-manifest.json'), 'utf8'))
   ok(artManifest.versions.length === 1 && artManifest.versions[0].version === 2, '工件清单已更新')
@@ -124,9 +163,26 @@ try {
   const files = crate['@graph'].filter((n) => n['@type'] === 'File')
   ok(files.every((f) => /^#sha256:[0-9a-f]{64}$/.test(f['@id'])), 'File 用内容寻址 id')
   const actions = crate['@graph'].filter((n) => n['@type'] === 'CreateAction')
-  ok(actions.length === 2, `CreateAction 数量（results v2 + single v1）：${actions.length}`)
-  ok(!actions.some((a) => /results v1$/.test(a.name)), '已被 prune 的版本不出现在导出里')
+  ok(actions.some((a) => /^results v2$/.test(a.name)), `导出应含 results v2：${actions.map((a) => a.name)}`)
+  ok(!actions.some((a) => /^results v1$/.test(a.name)), '已被 prune 的版本不出现在导出里')
   ok(actions[0].actionStatus?.includes('CompletedActionStatus'), 'CreateAction 记录成功态')
+
+  // ── 经符号链接调用（npm bin / ~/.local/bin 的真实形态）──
+  const binDir = join(root, 'bin')
+  await mkdir(binDir, { recursive: true })
+  const link = join(binDir, 'vault')
+  const { symlink } = await import('node:fs/promises')
+  await symlink(CLI, link)
+  const viaLink = await (async () => {
+    try {
+      const { stdout } = await run(process.execPath, [link, 'list', '--root', root], { timeout: 30000 })
+      return { code: 0, out: stdout }
+    } catch (error) {
+      return { code: error.code ?? 1, out: `${error.stdout ?? ''}${error.stderr ?? ''}` }
+    }
+  })()
+  ok(viaLink.code === 0, `经符号链接调用应成功：${viaLink.out.slice(0, 120)}`)
+  ok(/共 \d+ 个工件/.test(viaLink.out), `符号链接调用应有输出：${viaLink.out.slice(0, 120)}`)
 
   // 未知命令
   const bogus = await vault(root, 'nonsense')

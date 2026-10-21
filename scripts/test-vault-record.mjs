@@ -95,6 +95,24 @@ try {
   const inoV3 = (await stat(join(root, 'research/records/loss-curve/v3/files/a.csv'))).ino
   ok(inoV3 !== inoV1, '内容变化时不复用硬链接')
 
+  // ── 不同源含同名文件：不得静默覆盖 ──
+  await mkdir(join(root, 'data2'), { recursive: true })
+  await writeFile(join(root, 'data2', 'a.csv'), 'x,y\n8,8\n')   // 与 data/a.csv 同名且内容不同
+  const outCollide = await call('record_save', { root, name: 'collide demo', sources: ['data', 'data2'], seed: 3 })
+  ok(/同名冲突已消解/.test(outCollide), `应提示冲突消解：${outCollide.slice(0, 200)}`)
+  const collide = JSON.parse(await readFile(join(root, 'research/records/collide-demo/v1/manifest.json'), 'utf8'))
+  const paths = collide.inputs.map((f) => f.path)
+  ok(new Set(paths).size === paths.length, `清单路径必须唯一：${JSON.stringify(paths)}`)
+  const shas = new Set(collide.inputs.map((f) => f.sha256))
+  ok(shas.size === collide.inputs.length, '两个同名不同内容的文件都要保住（哈希各不相同）')
+  for (const f of collide.inputs) {
+    const disk = await readFile(join(root, 'research/records/collide-demo/v1/files', f.path))
+    const { createHash } = await import('node:crypto')
+    ok(createHash('sha256').update(disk).digest('hex') === f.sha256, `${f.path} 落盘内容与清单哈希一致`)
+  }
+  const collideVerify = await call('record_verify', { root, name: 'collide demo' })
+  ok(collideVerify.status === 'ok', `冲突消解后校验应 ok，实际 ${collideVerify.status}：${JSON.stringify(collideVerify.issues ?? collideVerify.mismatches)}`)
+
   // ── verify（干净版本）──────────────────────────────────────────────────
   const v1 = await call('record_verify', { root, name: 'Loss Curve', version: 1 })
   ok(v1.status === 'ok', `干净版本应 ok，实际 ${v1.status}（warnings=${JSON.stringify(v1.warnings)}）`)
@@ -150,7 +168,7 @@ try {
   ok(/python train\.py --seed 42/.test(guide), `复现指引含命令：${guide.slice(0, 160)}`)
   ok(/随机种子：42/.test(guide), '复现指引含种子值')
   ok(/## 环境/.test(guide), '复现指引含环境段')
-  ok(/## 输入/.test(guide), '复现指引含输入段')
+  ok(/## 文件（回查原路径/.test(guide), '复现指引含文件回查段')
   ok(/哈希一致/.test(guide), '输入哈希一致时应标注')
 
   // 输入被改动 → 指引应标出

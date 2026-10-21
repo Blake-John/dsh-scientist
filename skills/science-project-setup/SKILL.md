@@ -14,7 +14,7 @@ whenToUse: 开始新科研项目、把已有材料组织成可运行的研究项
 | --- | --- | --- |
 | `experiments/<id>/` | 每个实验一个目录：design.md、log.md、code/、results/ | 代码入，大结果出 |
 | `literature/` | 文献笔记、`references.bib`、检索记录 | 入 |
-| `research/records/<name>/` | 版本化工件：v<N>/、artifact.json、provenance.md | 入（小文件） |
+| `research/records/<name>/` | 版本化工件：v<N>/、manifest.json、provenance.jsonl | 入（小文件） |
 | `analyses/` | 分析脚本（可复用流水线） | 入 |
 | `figures/` | 成稿图表 | 入 |
 | `manuscript/` | 论文草稿 | 入 |

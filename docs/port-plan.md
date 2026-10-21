@@ -1,5 +1,8 @@
 # 移植与改进方案：artifact-registry + research-loop
 
+> ⚠ **本文已被 [research-record-plan.md](research-record-plan.md) 取代**（那里是按可复现性标准重新设计，
+> 不是移植）。保留本文仅为记录决策过程与早期取舍。
+
 > 状态：设计稿，待评审。目标版本 0.3.0。
 > 范围：移植 dsh-science 的两个引擎（15 个工具），**不移植** remote-compute。
 

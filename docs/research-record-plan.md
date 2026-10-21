@@ -301,8 +301,34 @@ lit-lib（citekey）
 **工具总数 12**：`record_*` 3 + `study_*` 9。
 验收基线：`bash scripts/verify.sh` = 16 项全过。
 
-### 实施中发现并修正的实现缺陷
+### 实施与审查中发现并修正的缺陷
 
-1. `inputs[].path` 曾只存「相对源目录」路径，导致复现时按项目根找不到原文件 → 增加 `sourcePath`。
-2. 阶段回退标注用 `change.to < change.from` 判断，是字符串字典序（`'experiment' < 'analysis'` 为 false）→ 改用阶段索引 `rewound: j < i`。
-3. `vault prune` 的最新版保护有两处冗余，单拆任一处不触发测试 → 已加注释说明双保险意图。
+**数据损坏级**
+
+1. **文件锁在长任务期间被抢走**：锁只按文件 mtime 判断陈旧，任何超过 `staleMs`（30s）的
+   `record_save`（大目录复制）都会被后续调用当成陈旧锁回收 → 两个写者同时改 manifest/index。
+   修法：持锁期间**心跳续期**（staleMs/3 刷新 mtime）+ 抢锁前**检查持锁 PID 是否还活着**
+   （死进程留下的锁立即回收，不用干等）。
+2. **多源同名文件静默覆盖**：`sources: ['data','extra']` 里都有 `a.csv` 时落到同一路径，
+   后者覆盖前者，清单还声称两个都在。修法：逐源遍历并打源名前缀消解冲突，落盘后校验路径唯一。
+
+**功能错误**
+
+3. `inputs[].path` 曾只存「相对源目录」路径，复现时按项目根找不到原文件 → 增记 `sourcePath`。
+4. 阶段回退标注用 `change.to < change.from`（字符串字典序，`'experiment' < 'analysis'` 为 false）→ 改用阶段索引。
+5. `vault diff` 默认对比的 `from` 用升序 `find` 取到**最旧版**而非上一版 → 反向查找。
+6. `vault export` 的 `endTime` 写反（有耗时反而给 `undefined`）→ 由 `createdAt + durationMs` 推出。
+7. CLI 入口用 `import.meta.url === file://${argv[1]}` 判断，经 npm bin 符号链接调用时不等 →
+   **装好后命令静默无输出**。改用 realpath 比对（与 `lit-lib` 同一处坑）。
+8. `vault prune` 不清理 `by-hash.json` 的死条目，去重表只增不减 → 清理时校验文件存在。
+9. `record_save` 不刷新 `INDEX.md`，工件表停在旧状态 → 保存后联动刷新。
+
+**工程缺陷**
+
+10. 技能与文档仍写 `provenance.md`（实际落盘是 `provenance.jsonl`）→ 已改正。
+11. `study_experiment` 的 `status` 参数曾"删除失败"（正则没匹配到双空格），后续恢复时又插入一份
+    → 出现重复键，已清理；并加了重复参数键扫描。
+12. `vault export` 虚构 `object`（本工具不区分输入/输出）→ 只输出 `result`，并在 crate 里注明。
+13. 若干未使用的 import、`seeen` 拼写 → 已清理。
+
+> 每一项都配了回归测试，并用变异测试确认「把修复改回去 → 测试变红」。

@@ -6,7 +6,12 @@ whenToUse: 生成了值得保留/复现/引用的结果时；写论文引用数�
 
 # 工件与溯源（Artifacts & Provenance）
 
-每一个值得保留的结果都保存为版本化工件：`research/records/<name>/v<N>/`，附 artifact.json（版本索引）与 provenance.md（溯源日志）。
+每一个值得保留的结果都用 `record_save` 保存为版本化工件：`research/records/<name>/v<N>/`，附 manifest.json（该版本完整溯源）与 provenance.jsonl（append-only 事件流）。
+
+## 保存后必须校验
+
+`record_verify` 会重算哈希、报缺失与被改、**检出目录里多出来的文件**、检查环境文件是否漂移、
+提示未记录随机种子或图的原始数据。归档完立刻校验一次，别等交稿前。
 
 ## 何时归档（判据）
 

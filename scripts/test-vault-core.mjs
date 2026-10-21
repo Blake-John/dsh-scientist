@@ -118,6 +118,41 @@ try {
   }).catch(() => {})
   ok(!(await stat(lock).catch(() => null)), '异常路径释放锁')
 
+  // ── 4b. 长任务持锁不被抢走（心跳）──
+  // 曾经的 bug：锁只按创建时间判断，任何超过 staleMs 的操作都会被当成陈旧锁抢走，
+  // 导致两个写者同时改同一个 manifest。心跳续期修复了它。
+  const hbLock = join(proj, 'research', '.hb.lock')
+  const seq = []
+  const t0 = Date.now()
+  const slowHolder = withFileLock(hbLock, { staleMs: 200, timeoutMs: 5000 }, async () => {
+    seq.push(['A-in', Date.now() - t0])
+    await new Promise((r) => setTimeout(r, 800))
+    seq.push(['A-out', Date.now() - t0])
+  })
+  await new Promise((r) => setTimeout(r, 80))
+  const waiter = withFileLock(hbLock, { staleMs: 200, timeoutMs: 5000 }, async () => {
+    seq.push(['B-in', Date.now() - t0])
+    await new Promise((r) => setTimeout(r, 20))
+    seq.push(['B-out', Date.now() - t0])
+  })
+  await Promise.all([slowHolder, waiter])
+  const aOut = seq.find((e) => e[0] === 'A-out')?.[1]
+  const bIn = seq.find((e) => e[0] === 'B-in')?.[1]
+  ok(aOut !== undefined && bIn !== undefined, '心跳测试两个任务都完成')
+  ok(bIn >= aOut, `长任务持锁期间不应被抢：B 进入于 ${bIn}ms，A 退出于 ${aOut}ms`)
+
+  // ── 4c. 持锁进程已死 → 立即回收，不必干等 staleMs ──
+  const deadLock = join(proj, 'research', '.dead.lock')
+  await writeFile(deadLock, JSON.stringify({ pid: 999999, at: new Date().toISOString() }))
+  const t1 = Date.now()
+  let reclaimedFast = false
+  await withFileLock(deadLock, { staleMs: 60_000, timeoutMs: 5000 }, async () => {
+    reclaimedFast = true
+  })
+  const elapsed = Date.now() - t1
+  ok(reclaimedFast, '死进程留下的锁应被回收')
+  ok(elapsed < 1000, `死锁应立即回收，实际等了 ${elapsed}ms（staleMs=60000）`)
+
   // ── 5. 哈希 ───────────────────────────────────────────────────────────────
   const hf = join(dir, 'hello.txt')
   await writeFile(hf, 'hello')

@@ -14,12 +14,12 @@
  */
 
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { realpathSync } from 'node:fs'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
-  hashFileStreaming,
   humanBytes,
   nowISO,
   readJson,
@@ -190,7 +190,10 @@ async function cmdDiff(root, name, flags) {
   const { art } = await loadArtifact(root, name)
   if (art.versions.length < 2) throw vaultErr('ERR_BAD_ARGS', `${name} 只有一个版本，无法对比`)
   const to = flags.to ? Number(flags.to) : art.versions[art.versions.length - 1].version
-  const from = flags.from ? Number(flags.from) : (art.versions.find((v) => v.version < to)?.version ?? art.versions[0].version)
+  // 版本数组升序：必须从后往前找，才拿到「上一版」而不是最旧版
+  const from = flags.from
+    ? Number(flags.from)
+    : ([...art.versions].reverse().find((v) => v.version < to)?.version ?? art.versions[0].version)
   const a = await loadVersion(root, name, from)
   const b = await loadVersion(root, name, to)
   const mapA = new Map((a.manifest.inputs ?? []).map((f) => [f.path, f]))
@@ -290,7 +293,23 @@ async function cmdPrune(root, flags) {
       }
     }
 
-    if (!dryRun && removedVersions) await writeJsonAtomic(paths(root).index, index)
+    if (!dryRun && removedVersions) {
+      await writeJsonAtomic(paths(root).index, index)
+      // 清掉 by-hash 里指向已删除文件的死条目（否则去重表只增不减）
+      const byHashPath = join(root, 'research', 'records', 'by-hash.json')
+      const byHash = await readJson(byHashPath, null)
+      if (byHash && typeof byHash === 'object') {
+        let dropped = 0
+        for (const [sha, rel] of Object.entries(byHash)) {
+          const exists = await stat(join(root, 'research', 'records', rel)).then((i) => i.isFile()).catch(() => false)
+          if (!exists) {
+            delete byHash[sha]
+            dropped += 1
+          }
+        }
+        if (dropped) await writeJsonAtomic(byHashPath, byHash)
+      }
+    }
 
     if (!removedVersions) {
       console.log('没有需要清理的版本')
@@ -356,7 +375,7 @@ async function cmdExport(root, flags) {
     datePublished: nowISO(),
     conformsTo: [{ '@id': 'https://w3id.org/ro/crate/1.1' }],
     // 说明这是子集：只导出工件与其执行，不含原始数据
-    comment: 'vault export 生成的 RO-Crate 子集：包含工件、执行（CreateAction）与关联；不含原始数据本体',
+    comment: 'vault export 生成的 RO-Crate 子集：含工件文件、执行（CreateAction）与关联；不区分输入/输出，也不含原始数据本体',
   })
 
   for (const entry of index.records) {
@@ -366,16 +385,21 @@ async function cmdExport(root, flags) {
       if (!manifest) continue
       const actionId = `#record:${art.slug}:v${v.version}`
       const a = manifest.activity ?? {}
+      // 结束时间 = 开始 + 耗时（旧实现写反了：有耗时反而给 undefined）
+      const startMs = Date.parse(manifest.createdAt)
+      const endTime = Number.isFinite(startMs) && a.durationMs
+        ? new Date(startMs + a.durationMs).toISOString()
+        : manifest.createdAt
       graph.push({
         '@id': actionId,
         '@type': 'CreateAction',
         name: `${manifest.name} v${v.version}`,
         description: manifest.description ?? '',
         startTime: manifest.createdAt,
-        endTime: a.durationMs ? undefined : manifest.createdAt,
+        endTime,
         actionStatus: a.actionStatus ? `http://schema.org/${a.actionStatus}` : undefined,
         instrument: a.command ? { '@id': `#command:${art.slug}:v${v.version}` } : undefined,
-        object: (manifest.inputs ?? []).map((f) => ({ '@id': shaId(f.sha256) })),
+        // 存储的是产出快照（result）；本记录不区分「输入」与「输出」，故不虚构 object
         result: (manifest.inputs ?? []).map((f) => ({ '@id': shaId(f.sha256) })),
         mention: (manifest.links?.experiment ? [{ '@id': `#experiment:${manifest.links.experiment}` }] : []).concat(
           (manifest.links?.citekeys ?? []).map((k) => ({ '@id': `#citekey:${k}` })),
@@ -487,7 +511,19 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// 只在作为入口直接运行时执行。
+// 经 npm bin / ~/.local/bin 符号链接调用时 argv[1] 是链接路径，import.meta.url 是真实路径
+// —— 必须比对 realpath，否则装好之后命令会静默什么都不做（与 lit-lib 同一处坑）。
+const invokedDirectly = (() => {
+  if (!process.argv[1]) return false
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+  } catch {
+    return false
+  }
+})()
+
+if (invokedDirectly) {
   main().catch((error) => {
     console.error(`✗ ${error.message}`)
     process.exit(1)
