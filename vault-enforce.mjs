@@ -15,7 +15,6 @@
 // 事件 payload 由 dispatch 的 fused() 自动注入 agent（packages/core/agent/src/dispatch.ts:113）。
 
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import { resolveRoot } from './vault-core.mjs'
 import { activeLoop, bumpNudge, describeContract, isSuspended, stallLoop } from './vault-loop-core.mjs'
 

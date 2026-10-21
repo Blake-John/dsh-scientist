@@ -38,8 +38,8 @@ jobs:
           python3 -V
           echo "package.json 版本: $(node -p "require('./package.json').version")"
 
-      # 本包零运行时依赖，不需要 npm ci；直接跑自带的 11 项校验
-      - name: 全量校验（11 项）
+      # 本包零运行时依赖，不需要 npm ci；直接跑自带的 13 项校验
+      - name: 全量校验（13 项）
         run: npm run check
         env:
           # 无 DSH checkout 时 check-loader/roster/patch 会优雅跳过（打印警告）

@@ -9,9 +9,12 @@
 // 校验项是字符串 DSL（命令侧声明，这里执行）：
 //   file:<path>                 文件存在
 //   glob:<pattern>              至少匹配一个文件（* 通配）
-//   contains:<path>:<a>|<b>     文件包含全部子串
+//   contains:<path>:<a>|<b>     文件包含全部子串（忽略大小写）
+//   contains-any:<path>:<a>|<b> 文件包含任一子串（忽略大小写）
+//   markdown-table:<path>       至少一张 Markdown 表格（表头 + 分隔行）
 //   min-citations:<path>:<n>    文件里不同 citekey 数量 ≥ n
 //   bib-entry:<key>             literature/references.bib 有该条目
+//   paper-note:<a>|<b>          notes 下有本次新建/更新的笔记，含全部标签且 bib 有条目
 //   executable:<path>           文件存在且带 shebang 或以 .py 结尾
 //   cite-check                  运行 scripts/cite-check.mjs（无错误）
 //   cite-check-deep             同上加 --deep
@@ -260,6 +263,8 @@ async function runCiteCheck(root, deep) {
   }
 }
 
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 /** 执行单条校验；返回 null 表示通过，否则返回失败描述 */
 export async function runCheck(root, loop, spec) {
   const [kind, ...rest] = String(spec).split(':')
@@ -281,8 +286,31 @@ export async function runCheck(root, loop, spec) {
       const [path, labels] = [rest[0], rest.slice(1).join(':')]
       const text = await readFile(rel(path), 'utf8').catch(() => null)
       if (text === null) return `缺产物：${path}`
-      const missing = labels.split('|').filter((label) => !text.includes(label))
+      const hay = text.toLowerCase()
+      const missing = labels.split('|').filter((label) => !hay.includes(label.toLowerCase()))
       return missing.length ? `${path} 缺少：${missing.join('、')}` : null
+    }
+    case 'contains-any': {
+      const [path, labels] = [rest[0], rest.slice(1).join(':')]
+      const text = await readFile(rel(path), 'utf8').catch(() => null)
+      if (text === null) return `缺产物：${path}`
+      const hay = text.toLowerCase()
+      const list = labels.split('|')
+      return list.some((label) => hay.includes(label.toLowerCase()))
+        ? null
+        : `${path} 缺少以下任一项：${list.join('、')}`
+    }
+    case 'markdown-table': {
+      const path = rest.join(':')
+      const text = await readFile(rel(path), 'utf8').catch(() => null)
+      if (text === null) return `缺产物：${path}`
+      const lines = text.split(/\r?\n/)
+      const hasTable = lines.some((line, index) => {
+        if (!line.includes('|')) return false
+        const next = lines[index + 1] ?? ''
+        return next.includes('|') && /^\s*\|?[\s:|-]*-{3,}[\s:|-]*\|?\s*$/.test(next)
+      })
+      return hasTable ? null : `${path} 里没有 Markdown 表格（方法对比表）`
     }
     case 'min-citations': {
       const [path, n] = [rest[0], Number(rest[1])]
@@ -294,7 +322,52 @@ export async function runCheck(root, loop, spec) {
     case 'bib-entry': {
       const key = rest.join(':')
       const bib = await readFile(join(root, 'literature', 'references.bib'), 'utf8').catch(() => '')
-      return new RegExp(`\\{[\\s]*${key}\\s*,`).test(bib) ? null : `references.bib 里没有条目 ${key}`
+      return new RegExp(`\\{[\\s]*${escapeRegExp(key)}\\s*,`).test(bib) ? null : `references.bib 里没有条目 ${key}`
+    }
+    case 'paper-note': {
+      // key-agnostic：命令入口不知道 citekey（它由元数据决定），所以只要求
+      // “本次 loop 新建/更新的笔记 + 三节齐全 + 笔记文件名（citekey）在 bib 里有条目”。
+      const labels = (rest.join(':') || '方法|结果|局限').split('|')
+      const notesDir = join(root, 'literature', 'notes')
+      const entries = await readdir(notesDir).catch(() => [])
+      const since = Date.parse(loop.openedAt ?? '')
+      const recent = []
+      for (const entry of entries) {
+        if (!entry.endsWith('.md')) continue
+        const file = join(notesDir, entry)
+        const info = await stat(file).catch(() => null)
+        if (!info?.isFile()) continue
+        if (Number.isFinite(since) && info.mtimeMs < since - 2000) continue
+        recent.push({ entry, file, mtimeMs: info.mtimeMs })
+      }
+      if (!recent.length) {
+        return `literature/notes/ 下没有本次 loop 新建或更新的笔记（需含 ${labels.join('、')}）`
+      }
+      recent.sort((a, b) => b.mtimeMs - a.mtimeMs)
+      const complete = []
+      let firstIncomplete = null
+      for (const item of recent) {
+        const text = await readFile(item.file, 'utf8').catch(() => '')
+        const hay = text.toLowerCase()
+        const missing = labels.filter((label) => !hay.includes(label.toLowerCase()))
+        if (missing.length) {
+          if (!firstIncomplete) firstIncomplete = { ...item, missing }
+        } else {
+          complete.push(item)
+        }
+      }
+      if (!complete.length) {
+        const target = firstIncomplete ?? { entry: recent[0].entry, missing: labels }
+        return `笔记 ${target.entry} 缺少：${target.missing.join('、')}`
+      }
+      const bib = await readFile(join(root, 'literature', 'references.bib'), 'utf8').catch(() => '')
+      const withBib = complete.find((item) => {
+        const key = item.entry.replace(/\.md$/i, '')
+        return new RegExp(`\\{\\s*${escapeRegExp(key)}\\s*,`).test(bib)
+      })
+      return withBib
+        ? null
+        : `笔记 ${complete.map((item) => item.entry).join('、')} 没有对应的 references.bib 条目（笔记文件名应与 citekey 一致；用 lit_bib(citekey=…) 写入）`
     }
     case 'executable': {
       const path = rest.join(':')
@@ -391,6 +464,15 @@ export function describeRequirement(spec) {
     case 'contains': {
       const [path, labels] = [rest[0], rest.slice(1).join(':')]
       return `\`${path}\` 包含：${labels.split('|').join('、')}`
+    }
+    case 'contains-any': {
+      const [path, labels] = [rest[0], rest.slice(1).join(':')]
+      return `\`${path}\` 至少含以下之一：${labels.split('|').join('、')}`
+    }
+    case 'markdown-table': return `\`${rest.join(':')}\` 里有 Markdown 表格（方法对比表）`
+    case 'paper-note': {
+      const labels = (rest.join(':') || '方法|结果|局限').split('|')
+      return `literature/notes/ 下有本次新建或更新的笔记（含 ${labels.join('、')}），且对应 references.bib 条目`
     }
     case 'min-citations': return `\`${rest[0]}\` 至少 ${rest[1]} 条编号引用`
     case 'bib-entry': return `references.bib 里有 \`${rest.join(':')}\` 条目`

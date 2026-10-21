@@ -244,12 +244,13 @@ bash scripts/verify.sh --offline    # 跳过需要网络的 MCP 探测
 
 | 检查 | 结果 |
 |---|---|
-| 结构（24 个顶层插件行、15 个技能 frontmatter、preset.yml） | 通过 |
+| 结构（27 个顶层插件行、15 个技能 frontmatter、preset.yml） | 通过 |
 | loader 方言（真实 `entryListSchema` + 7 个 `!!js` 求值） | 通过 |
 | bundle patch 与源组合一致 / 注册正确 | 通过 |
 | skills-provider 单测（frontmatter + 15 候选 + 正文加载） | 通过 |
 | cite-check 自测（悬空 citekey、缺失字段） | 通过 |
 | lit 4 个工具结构 + 离线单测 | 通过 |
+| 约定 loop / 7 命令 / 强制层（状态机、出口校验、拦停、guard） | 通过 |
 | lit 联网实测（`--live`） | 通过：lit_doi / lit_search / lit_bib / lit_pdf(arXiv) / lit_pdf(LibGen) |
 
 真正挂载进会话需要重启 dsh web 进程。重启后新建会话 → 选「科学家模式」→

@@ -8,7 +8,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { apply } from '../vault-commands.mjs'
+import { apply, __test__ } from '../vault-commands.mjs'
 import { createLoop, listLoops } from '../vault-loop-core.mjs'
 
 const problems = []
@@ -48,6 +48,33 @@ try {
     })
   }
 
+  // ── 契约计划（不建 loop）：中文保留 / paper 不把 DOI 当 key ──
+  const planOf = (name, arg) => __test__.LOOP_COMMANDS.find((c) => c.name === name).plan(arg)
+  ok(
+    planOf('survey', '航磁补偿').artifacts[0] === 'reports/landscape-航磁补偿.md',
+    `survey 中文产物：${planOf('survey', '航磁补偿').artifacts[0]}`,
+  )
+  ok(
+    planOf('derive', '航磁补偿').artifacts[0] === 'derivations/航磁补偿/derive.py',
+    `derive 中文目录：${planOf('derive', '航磁补偿').artifacts[0]}`,
+  )
+  ok(
+    planOf('write', '航磁补偿').artifacts[0] === 'reports/航磁补偿.md',
+    `write 中文目标：${planOf('write', '航磁补偿').artifacts[0]}`,
+  )
+  ok(
+    planOf('paper', '10.1038/nature12373').requires[0] === 'paper-note:方法|结果|局限',
+    `paper 契约 key-agnostic：${planOf('paper', '10.1038/nature12373').requires}`,
+  )
+  ok(
+    !planOf('paper', '10.1038/nature12373').requires.some((r) => r.includes('10.1038')),
+    'paper 契约不再把 DOI slug 当 key',
+  )
+  ok(
+    planOf('derive', 'x').checks.some((c) => c.startsWith('contains-any:')),
+    `derive 契约含验证路线：${planOf('derive', 'x').checks}`,
+  )
+
   // ── 无参报错 ──
   for (const name of ['survey', 'paper', 'derive']) {
     const res = await invoke(name, '')
@@ -72,7 +99,9 @@ try {
   ok(loops[0].exit.workMin === 3, 'workMin=3')
   ok(loops[0].maxNudges === 3, 'maxNudges=3')
   ok(loops[0].skill === 'domain-survey', 'skill 记录')
-  ok(loops[0].exit.requires.some((r) => r.includes('reports/landscape-pinn.md')), `产物路径：${loops[0].exit.requires}`)
+  ok(loops[0].exit.requires.some((r) => r.includes('reports/landscape-pinn-求解器.md')), `产物路径（中文保留）：${loops[0].exit.requires}`)
+  ok(loops[0].exit.checks.includes('cite-check'), `survey 契约含 cite-check：${loops[0].exit.checks}`)
+  ok(loops[0].exit.checks.some((c) => c.startsWith('markdown-table:')), `survey 契约含方法对比表：${loops[0].exit.checks}`)
 
   // 注入的 prompt 必须含出口契约与记账指令
   ok(followups.length === 1, `应注入一条消息，实际 ${followups.length}`)

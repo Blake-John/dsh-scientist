@@ -6,7 +6,7 @@
  *       出口校验（文件/内容/引用数/work 条数）、CLI 全流程。
  */
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -44,7 +44,7 @@ try {
     checks: ['contains:reports/landscape-pinn.md:方法|gap'],
     workMin: 2,
   })
-  ok(/^survey-pinn-\d{8}T\d{4}$/.test(loop.id), `id 格式：${loop.id}`)
+  ok(/^survey-pinn-求解器-\d{8}T\d{4}$/.test(loop.id), `id 格式（中文保留）：${loop.id}`)
   ok(loop.status === 'running', '初始 running')
   ok(loop.nudges === 0 && loop.maxNudges === 3, '默认拦停 0/3')
   const onDisk = JSON.parse(await readFile(join(root, 'research/loops', `${loop.id}.json`), 'utf8'))
@@ -120,6 +120,66 @@ try {
   ok(runningOnly.every((l) => l.status === 'running'), '状态过滤')
   const active = await activeLoop(root)
   ok(active?.id === loop4.id, `active 取最近开启：${active?.id}`)
+
+  // ── 新增校验：contains 忽略大小写 / markdown-table / contains-any ──
+  const loop5 = await createLoop(root, {
+    kind: 'survey',
+    arg: 'case',
+    requires: ['contains:reports/case.md:gap', 'markdown-table:reports/case.md'],
+    checks: ['contains-any:reports/case.md:空白|缺口'],
+  })
+  await writeFile(
+    join(root, 'reports/case.md'),
+    '# x\n\n| 方法 | 年份 |\n|---|---|\n| A | 2020 |\n\n## Gap\n\n研究缺口\n',
+  )
+  const v5 = await verifyExit(root, await readLoop(root, loop5.id))
+  ok(v5.ok, `大小写/表格/任一子串应通过：${JSON.stringify(v5.failures)}`)
+  await abortLoop(root, loop5.id, '测试用')
+
+  const loop6 = await createLoop(root, {
+    kind: 'survey',
+    arg: 'notable',
+    requires: ['markdown-table:reports/notable.md'],
+  })
+  await writeFile(join(root, 'reports/notable.md'), '# x\n\n没有表格\n')
+  const v6 = await verifyExit(root, await readLoop(root, loop6.id))
+  ok(v6.failures.some((f) => f.includes('没有 Markdown 表格')), `缺表格应报出：${JSON.stringify(v6.failures)}`)
+  await abortLoop(root, loop6.id, '测试用')
+
+  const loop7 = await createLoop(root, {
+    kind: 'derive',
+    arg: 'nany',
+    requires: ['contains-any:reports/nany.md:数值|量纲'],
+  })
+  await writeFile(join(root, 'reports/nany.md'), '只有文字\n')
+  const v7 = await verifyExit(root, await readLoop(root, loop7.id))
+  ok(v7.failures.some((f) => f.includes('缺少以下任一项')), `contains-any 应报出：${JSON.stringify(v7.failures)}`)
+  await abortLoop(root, loop7.id, '测试用')
+
+  // ── paper-note：旧笔记不算 / 缺 bib 不算 / 新笔记 + bib 通过 ──
+  await mkdir(join(root, 'literature', 'notes'), { recursive: true })
+  const oldNote = join(root, 'literature/notes/old2020x.md')
+  await writeFile(oldNote, '# old\n\n方法\n结果\n局限\n')
+  await utimes(oldNote, new Date('2020-01-01'), new Date('2020-01-01'))
+  await writeFile(join(root, 'literature/references.bib'), '@article{old2020x,\n  title={Old},\n}\n')
+  const loop8 = await createLoop(root, { kind: 'paper', arg: 'p', requires: ['paper-note:方法|结果|局限'] })
+  const v8 = await verifyExit(root, await readLoop(root, loop8.id))
+  ok(v8.failures.some((f) => f.includes('没有本次 loop 新建或更新')), `旧笔记不应算：${JSON.stringify(v8.failures)}`)
+
+  await writeFile(
+    join(root, 'literature/notes/raissi2019pinn.md'),
+    '# PINN\n\n## 方法\n...\n## 结果\n...\n## 局限\n...\n',
+  )
+  const v9 = await verifyExit(root, await readLoop(root, loop8.id))
+  ok(v9.failures.some((f) => f.includes('没有对应的 references.bib 条目')), `缺 bib 应报出：${JSON.stringify(v9.failures)}`)
+
+  await writeFile(
+    join(root, 'literature/references.bib'),
+    '@article{old2020x,\n  title={Old},\n}\n\n@article{raissi2019pinn,\n  title={PINN},\n}\n',
+  )
+  const v10 = await verifyExit(root, await readLoop(root, loop8.id))
+  ok(v10.ok, `新笔记 + bib 应通过：${JSON.stringify(v10.failures)}`)
+  await abortLoop(root, loop8.id, '测试用')
 
   // ── CLI 全流程 ──
   const cli = async (...args) => {

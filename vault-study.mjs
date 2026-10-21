@@ -28,7 +28,6 @@ import {
   readJson,
   requireStr,
   resolveRoot,
-  slugify,
   vaultErr,
   withFileLock,
   withinRoot,

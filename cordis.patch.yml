@@ -124,8 +124,8 @@
                 - **统计**：比较组间差异前先按 stats-and-inference 定检验（默认 Welch t 或非参数），
                   报 n、效应量、95% CI 与校正方式；计算/ML 实验至少 3–5 个种子，报 mean±std，
                   绝不报 best-of-n；p > .05 只说"无证据支持差异"，不说"没有差异"。
-                - **引用**：定稿前跑 `cite-check --root .`（首次用 scripts/install-cli.sh 装到
-                  ~/.local/bin；也可 `node ~/.dsh/.agent-presets/scientist/scripts/cite-check.mjs`）
+                - **引用**：定稿前跑 `cite-check --root .`（首次用 `bash scripts/install-cli.sh` 装到
+                  `~/.local/bin`；也可在本包目录直接 `node scripts/cite-check.mjs`）
                   校验 references.bib：必填字段、DOI 与 Crossref/DataCite 元数据一致、正文 key 式
                   引用与 bib 双向对应。
                 - **环境**：装包前先 `conda env list` 看项目是否已有环境（别污染 base，也别默认用

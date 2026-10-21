@@ -33,12 +33,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // ── 标识与路径 ──────────────────────────────────────────────────────────────
 
-/** 工件名 → 目录名：小写、只留字母数字与 -_.，其余折叠为 - */
+/**
+ * 工件名 → 目录名：小写、保留 Unicode 字母/数字与 -_.，其余折叠为 -。
+ * 保留中文等非 ASCII 字母（科研项目名常是中文）；ASCII 输入的输出保持不变。
+ * 组合音标先去掉（Müller → muller），避免 NFKD 分解后留下连字符。
+ */
 export function slugify(value, fallback = 'item') {
   const slug = String(value ?? '')
     .normalize('NFKD')
+    .replace(/\p{M}+/gu, '')
     .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/[^\p{L}\p{N}._-]+/gu, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '')
   return slug || fallback

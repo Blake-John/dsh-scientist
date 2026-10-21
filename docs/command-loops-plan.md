@@ -1,6 +1,6 @@
 # 斜杠命令与约定 Loop：实施方案
 
-> 状态：设计定稿（2026-10-21 评审通过）。目标版本 0.4.0。
+> 状态：设计定稿（2026-10-21 评审通过）。目标版本 0.3.0（原定 0.4.0，总纲并入 0.3.0）。
 > 核心思想：**两端契约化，中段自由化**；强制只在命令激活期生效。
 
 ## 0. 一句话
@@ -44,9 +44,9 @@
 | 命令 | 参数 | 入口契约 | 出口契约（校验） | 技能 |
 |---|---|---|---|---|
 | `/study-init` | `[标题]` `--question` | 无（幂等；已存在则更新 title/question） | `research/study.json` 存在且含 title | — |
-| `/survey` | `<方向>` | 可无项目（自动建） | `reports/landscape-<slug>.md` 存在<br>≥5 条编号引用<br>含方法对比表 + gap 清单<br>`cite-check` 无错误<br>work ≥3 条 | domain-survey |
-| `/paper` | `<DOI\|arXiv id\|标题>` | 可无项目（自动建） | `literature/notes/<citekey>.md` 存在<br>bib 有该条目<br>笔记含「方法/结果/局限」三节<br>work ≥2 条 | literature-retrieval + pdf-reading |
-| `/derive` | `<命题\|流程\|逻辑>` | 要求项目（缺则自动建） | `derivations/<id>/derive.py` 存在且可执行<br>`validation.md` 存在<br>≥1 条验证记录<br>work ≥3 条 | derivation-lab |
+| `/survey` | `<方向>` | 可无项目（自动建） | `reports/landscape-<slug>.md` 存在<br>≥5 条编号引用<br>含 Markdown 方法对比表 + gap 清单<br>`cite-check` 无错误<br>work ≥3 条 | domain-survey |
+| `/paper` | `<DOI\|arXiv id\|标题>` | 可无项目（自动建） | `literature/notes/<citekey>.md` 本次新建或更新<br>笔记含「方法/结果/局限」三节<br>该 citekey 在 bib 有条目<br>work ≥2 条 | literature-retrieval + pdf-reading |
+| `/derive` | `<命题\|流程\|逻辑>` | 要求项目（缺则自动建） | `derivations/<id>/derive.py` 存在且可执行<br>`validation.md` 存在且含至少一条验证路线<br>work ≥3 条 | derivation-lab |
 | `/write` | `[目标]`（默认进度日志） | 要求项目 | 目标文件存在<br>`cite-check --deep` 通过 | — |
 | `/review` | `[对象]`（默认全部未验证项） | 要求项目 | `study.json` 新增 review 记录 | scientific-reviewer |
 | `/status` | `[loop-id]` `--abort` `--brief` `--json` | 无 | 无（只读，不创建 loop、不拦停） | — |

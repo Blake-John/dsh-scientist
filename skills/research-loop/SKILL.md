@@ -1,6 +1,6 @@
 ---
 name: research-loop
-description: 执行 Claude Science 式研究循环（ReAct：提问→假设→实验→观察→分析→结论→迭代）。当开始或继续一个科研任务、需要把研究推进到下一轮迭代时使用。配合 research_* 工具维护 research/study.json。
+description: 执行 Claude Science 式研究循环（ReAct：提问→假设→实验→观察→分析→结论→迭代）。当开始或继续一个科研任务、需要把研究推进到下一轮迭代时使用。配合 study_* 工具维护 research/study.json。
 whenToUse: 开始新研究任务、继续未完成的科研项目、或需要系统化推进假设检验时。
 ---
 
@@ -10,7 +10,7 @@ whenToUse: 开始新研究任务、继续未完成的科研项目、或需要系
 
 ## 循环步骤
 
-1. **Question** — 明确本轮要回答的问题。用 `study_state` 读取当前状态；问题不清晰时先用文献调研（literature-connector）收窄。
+1. **Question** — 明确本轮要回答的问题。用 `study_state` 读取当前状态；问题不清晰时先用文献调研（literature-retrieval）收窄。
 2. **Hypothesis** — 提出可证伪假设，用 `study_hypothesis` 登记（H1/H2/…）。好假设：可检验、有明确预期方向。
 3. **Experiment** — 用 `study_experiment` 登记实验（E01/…），写清 design.md：目的、步骤、预期结果。**先写设计再写代码**。
 4. **Act** — 写代码运行。代码放 `experiments/<id>/code/`，结果放 `experiments/<id>/results/`。每一步跑什么命令、参数是什么，写进 log.md。

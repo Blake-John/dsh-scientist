@@ -53,6 +53,13 @@ try {
   ok(slugify('Loss Curve v2!') === 'loss-curve-v2', `slugify: ${slugify('Loss Curve v2!')}`)
   ok(slugify('  ') === 'item', 'slugify 兜底')
   ok(slugify('a--b') === 'a-b', 'slugify 折叠连字符')
+  // 中文必须保留（否则所有中文课题都会塌缩到同一个 fallback）
+  ok(slugify('航磁补偿') === '航磁补偿', `slugify 中文：${slugify('航磁补偿')}`)
+  ok(slugify('PINN 求解器') === 'pinn-求解器', `slugify 中英混合：${slugify('PINN 求解器')}`)
+  ok(slugify('中文/标题') === '中文-标题', `slugify 中文路径分隔：${slugify('中文/标题')}`)
+  ok(slugify('Müller') === 'muller', `slugify 组合音标：${slugify('Müller')}`)
+  ok(slugify('../etc/passwd') === 'etc-passwd', `slugify 防穿越：${slugify('../etc/passwd')}`)
+  ok(slugify('A_B.C') === 'a_b.c', `slugify 保留 . _：${slugify('A_B.C')}`)
 
   // ── 2. resolveRoot / withinRoot ───────────────────────────────────────────
   const proj = join(dir, 'proj')

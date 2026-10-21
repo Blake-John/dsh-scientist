@@ -40,4 +40,4 @@ whenToUse: 开始新科研项目、把已有材料组织成可运行的研究项
 
 `project`（标题/领域/状态）、`question`（核心问题）、`hypotheses[]`（id/text/status/experiments）、
 `loop`（phase/iteration/history）、`experiments[]`、`artifacts[]`、`reviews[]`。
-清单是机器与模型共用的真相来源：**所有状态变更走 research_* 工具，不要手改 JSON 结构**（追加式 log 文件除外）。
+清单是机器与模型共用的真相来源：**所有状态变更走 study_* 工具，不要手改 JSON 结构**（追加式 log 文件除外）。
