@@ -405,7 +405,11 @@ export function toBibtex(record, citekey = makeCitekey(record)) {
   if (!year) problems.push('缺 year')
 
   const venue = bibEscape(record.venue)
-  const journalLike = record.type === 'article' || (venue && !/arxiv/i.test(venue))
+  // 只有“作者/年份/venue 都齐”才输出 @article / @inproceedings；
+  // 否则降级为 @misc（cite-check 对 @misc 只要求 title），避免 lit_bib 写出
+  // cite-check 必然拒绝的缺字段条目，把 /survey 之类的闭环卡死。
+  const complete = Boolean(authors) && Boolean(year) && Boolean(venue)
+  const journalLike = Boolean(venue) && (record.type === 'article' || !/arxiv/i.test(venue))
 
   const fields = []
   const add = (name, value) => {
@@ -413,8 +417,11 @@ export function toBibtex(record, citekey = makeCitekey(record)) {
   }
 
   let kind = 'misc'
-  if (journalLike && record.type !== 'proceedings-article') kind = 'article'
-  else if (record.type === 'proceedings-article') kind = 'inproceedings'
+  if (record.type === 'proceedings-article' && complete) kind = 'inproceedings'
+  else if (journalLike && complete) kind = 'article'
+
+  if (record.type === 'article' && !venue) problems.push('缺 venue（按 @misc 输出）')
+  if (record.type === 'proceedings-article' && !venue) problems.push('缺 booktitle（按 @misc 输出）')
 
   add('author', authors)
   add('title', title)

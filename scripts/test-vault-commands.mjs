@@ -63,7 +63,7 @@ try {
     `write 中文目标：${planOf('write', '航磁补偿').artifacts[0]}`,
   )
   ok(
-    planOf('paper', '10.1038/nature12373').requires[0] === 'paper-note:方法|结果|局限',
+    planOf('paper', '10.1038/nature12373').requires[0] === 'paper-note:核心主张|方法要点|局限',
     `paper 契约 key-agnostic：${planOf('paper', '10.1038/nature12373').requires}`,
   )
   ok(
@@ -71,8 +71,8 @@ try {
     'paper 契约不再把 DOI slug 当 key',
   )
   ok(
-    planOf('derive', 'x').checks.some((c) => c.startsWith('contains-any:')),
-    `derive 契约含验证路线：${planOf('derive', 'x').checks}`,
+    planOf('derive', 'x').checks.some((c) => c.startsWith('contains-any:') && c.includes('小参数')),
+    `derive 契约含小参数展开：${planOf('derive', 'x').checks}`,
   )
 
   // ── 无参报错 ──
@@ -100,7 +100,7 @@ try {
   ok(loops[0].maxNudges === 3, 'maxNudges=3')
   ok(loops[0].skill === 'domain-survey', 'skill 记录')
   ok(loops[0].exit.requires.some((r) => r.includes('reports/landscape-pinn-求解器.md')), `产物路径（中文保留）：${loops[0].exit.requires}`)
-  ok(loops[0].exit.checks.includes('cite-check'), `survey 契约含 cite-check：${loops[0].exit.checks}`)
+  ok(loops[0].exit.checks.some((c) => c.startsWith('citations-bib:')), `survey 契约含 citekey↔bib 校验：${loops[0].exit.checks}`)
   ok(loops[0].exit.checks.some((c) => c.startsWith('markdown-table:')), `survey 契约含方法对比表：${loops[0].exit.checks}`)
 
   // 注入的 prompt 必须含出口契约与记账指令

@@ -136,6 +136,13 @@ try {
   ok(v5.ok, `大小写/表格/任一子串应通过：${JSON.stringify(v5.failures)}`)
   await abortLoop(root, loop5.id, '测试用')
 
+  // ASCII 标签按词边界：Singapore 不应匹配 gap
+  const loop5b = await createLoop(root, { kind: 'survey', arg: 'word', requires: ['contains:reports/word.md:gap'] })
+  await writeFile(join(root, 'reports/word.md'), 'Singapore\n')
+  const v5b = await verifyExit(root, await readLoop(root, loop5b.id))
+  ok(v5b.failures.some((f) => f.includes('缺少')), `Singapore 不应匹配 gap：${JSON.stringify(v5b.failures)}`)
+  await abortLoop(root, loop5b.id, '测试用')
+
   const loop6 = await createLoop(root, {
     kind: 'survey',
     arg: 'notable',
@@ -156,19 +163,23 @@ try {
   ok(v7.failures.some((f) => f.includes('缺少以下任一项')), `contains-any 应报出：${JSON.stringify(v7.failures)}`)
   await abortLoop(root, loop7.id, '测试用')
 
-  // ── paper-note：旧笔记不算 / 缺 bib 不算 / 新笔记 + bib 通过 ──
+  // ── paper-note：模板三节有内容 / 旧笔记不算 / 缺 bib 不算 / 复读更新算 ──
   await mkdir(join(root, 'literature', 'notes'), { recursive: true })
   const oldNote = join(root, 'literature/notes/old2020x.md')
-  await writeFile(oldNote, '# old\n\n方法\n结果\n局限\n')
+  await writeFile(
+    oldNote,
+    '# old\n\n## 核心主张\n旧论文的核心主张（足够长）\n## 方法要点\n旧论文的方法要点（足够长）\n## 局限\n旧论文的局限（足够长）\n',
+  )
   await utimes(oldNote, new Date('2020-01-01'), new Date('2020-01-01'))
   await writeFile(join(root, 'literature/references.bib'), '@article{old2020x,\n  title={Old},\n}\n')
-  const loop8 = await createLoop(root, { kind: 'paper', arg: 'p', requires: ['paper-note:方法|结果|局限'] })
+  const loop8 = await createLoop(root, { kind: 'paper', arg: 'p', requires: ['paper-note:核心主张|方法要点|局限'] })
   const v8 = await verifyExit(root, await readLoop(root, loop8.id))
   ok(v8.failures.some((f) => f.includes('没有本次 loop 新建或更新')), `旧笔记不应算：${JSON.stringify(v8.failures)}`)
 
+  const newNote = join(root, 'literature/notes/raissi2019pinn.md')
   await writeFile(
-    join(root, 'literature/notes/raissi2019pinn.md'),
-    '# PINN\n\n## 方法\n...\n## 结果\n...\n## 局限\n...\n',
+    newNote,
+    '# PINN\n\n## 核心主张\nPINN 用网络表示解（足够长）\n## 方法要点\n把 PDE 残差放进损失（足够长）\n## 局限\n高维与刚性方程困难（足够长）\n',
   )
   const v9 = await verifyExit(root, await readLoop(root, loop8.id))
   ok(v9.failures.some((f) => f.includes('没有对应的 references.bib 条目')), `缺 bib 应报出：${JSON.stringify(v9.failures)}`)
@@ -180,6 +191,86 @@ try {
   const v10 = await verifyExit(root, await readLoop(root, loop8.id))
   ok(v10.ok, `新笔记 + bib 应通过：${JSON.stringify(v10.failures)}`)
   await abortLoop(root, loop8.id, '测试用')
+
+  // 复读：更新基线里的旧笔记，mtime 变化后应算本次工作
+  const loop8b = await createLoop(root, { kind: 'paper', arg: 'reread', requires: ['paper-note:核心主张|方法要点|局限'] })
+  await writeFile(
+    oldNote,
+    '# old\n\n## 核心主张\n更新后的主张（足够长）\n## 方法要点\n更新后的方法（足够长）\n## 局限\n更新后的局限（足够长）\n',
+  )
+  const v10b = await verifyExit(root, await readLoop(root, loop8b.id))
+  ok(v10b.ok, `复读更新旧笔记应通过：${JSON.stringify(v10b.failures)}`)
+  await abortLoop(root, loop8b.id, '测试用')
+
+  // 空模板（只有标题没有正文）不算完成
+  const loop9 = await createLoop(root, { kind: 'paper', arg: 'empty', requires: ['paper-note:核心主张|方法要点|局限'] })
+  const emptyNote = join(root, 'literature/notes/empty2020x.md')
+  await writeFile(emptyNote, '# empty\n\n## 核心主张\n\n## 方法要点\n\n## 局限\n')
+  const v11 = await verifyExit(root, await readLoop(root, loop9.id))
+  ok(v11.failures.some((f) => f.includes('缺少有内容的章节')), `空模板不应算：${JSON.stringify(v11.failures)}`)
+  await abortLoop(root, loop9.id, '测试用')
+
+  // 无效 openedAt 必须 fail-closed（不能因为 Date.parse NaN 放行所有旧笔记）
+  const loop10 = await createLoop(root, { kind: 'paper', arg: 'bad-date', requires: ['paper-note:核心主张|方法要点|局限'] })
+  const file10 = join(root, 'research/loops', `${loop10.id}.json`)
+  const raw10 = JSON.parse(await readFile(file10, 'utf8'))
+  delete raw10.baseline
+  raw10.openedAt = 'not-a-date'
+  await writeFile(file10, JSON.stringify(raw10, null, 2))
+  const v12 = await verifyExit(root, await readLoop(root, loop10.id))
+  ok(v12.failures.some((f) => f.includes('缺少有效的 openedAt')), `无效 openedAt 应 fail-closed：${JSON.stringify(v12.failures)}`)
+  await abortLoop(root, loop10.id, '测试用')
+
+  // ── citations-bib：只校验本文件的 citekey，支持 [@a; @b] / [@c, p. 3] / \cite{d,e} / 中文 key ──
+  await writeFile(
+    join(root, 'reports/cite.md'),
+    '# cite\n\n[@a2020; @b2021] [@c2022, p. 3] \\cite{d2023,e2024} [@甲2025]\n',
+  )
+  await writeFile(
+    join(root, 'literature/references.bib'),
+    '@article{a2020,\n  title={A},\n}\n@article{b2021,\n  title={B},\n}\n@article{c2022,\n  title={C},\n}\n@article{d2023,\n  title={D},\n}\n@article{e2024,\n  title={E},\n}\n@article{甲2025,\n  title={F},\n}\n',
+  )
+  const loop11 = await createLoop(root, {
+    kind: 'survey',
+    arg: 'cite',
+    requires: ['min-citations:reports/cite.md:5', 'citations-bib:reports/cite.md'],
+  })
+  const v13 = await verifyExit(root, await readLoop(root, loop11.id))
+  ok(v13.ok, `citations-bib 应通过：${JSON.stringify(v13.failures)}`)
+  await abortLoop(root, loop11.id, '测试用')
+
+  // 缺一个 key → citations-bib 应报出
+  await writeFile(
+    join(root, 'literature/references.bib'),
+    '@article{a2020,\n  title={A},\n}\n@article{b2021,\n  title={B},\n}\n@article{c2022,\n  title={C},\n}\n@article{d2023,\n  title={D},\n}\n@article{甲2025,\n  title={F},\n}\n',
+  )
+  const loop12 = await createLoop(root, { kind: 'survey', arg: 'cite2', requires: ['citations-bib:reports/cite.md'] })
+  const v14 = await verifyExit(root, await readLoop(root, loop12.id))
+  ok(v14.failures.some((f) => f.includes('e2024')), `缺 bib key 应报出：${JSON.stringify(v14.failures)}`)
+  await abortLoop(root, loop12.id, '测试用')
+
+  // ── bib-entry：括号形式 + 正则特殊字符 ──
+  await writeFile(join(root, 'literature/references.bib'), '@article(a+b,\n  title={AB},\n}\n')
+  const loop13 = await createLoop(root, { kind: 'survey', arg: 'bib', requires: ['bib-entry:a+b'] })
+  const v15 = await verifyExit(root, await readLoop(root, loop13.id))
+  ok(v15.ok, `括号 + 特殊字符 bib-entry 应通过：${JSON.stringify(v15.failures)}`)
+  await abortLoop(root, loop13.id, '测试用')
+
+  // ── file-since-open：旧产物不能直接复用 ──
+  const oldArtifact = join(root, 'reports/old-artifact.md')
+  await writeFile(oldArtifact, 'old\n')
+  await utimes(oldArtifact, new Date('2020-01-01'), new Date('2020-01-01'))
+  const loop14 = await createLoop(root, {
+    kind: 'survey',
+    arg: 'old-artifact',
+    requires: ['file-since-open:reports/old-artifact.md'],
+  })
+  const v16 = await verifyExit(root, await readLoop(root, loop14.id))
+  ok(v16.failures.some((f) => f.includes('旧文件')), `旧产物不应算：${JSON.stringify(v16.failures)}`)
+  await writeFile(oldArtifact, 'updated\n')
+  const v17 = await verifyExit(root, await readLoop(root, loop14.id))
+  ok(v17.ok, `更新后应通过：${JSON.stringify(v17.failures)}`)
+  await abortLoop(root, loop14.id, '测试用')
 
   // ── CLI 全流程 ──
   const cli = async (...args) => {

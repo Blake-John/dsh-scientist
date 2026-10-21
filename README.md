@@ -109,7 +109,7 @@ bash scripts/install-cli.sh          # → ~/.local/bin/{lit,lit-lib,cite-check,
 |---|---|---|
 | `/study-init [标题] --question "…"` | 建/更新项目 | study.json |
 | `/survey <方向>` | 调研 | landscape 报告 + ≥5 引用 + gap |
-| `/paper <DOI\|id\|标题>` | 精读 | 笔记 + bib + 方法/结果/局限 |
+| `/paper <DOI\|id\|标题>` | 精读 | 笔记 + bib + 核心主张/方法要点/局限 |
 | `/derive <命题>` | 推导/论证 | derive.py 可执行 + validation.md |
 | `/write [目标]` | 成文 | 目标文件 + `cite-check --deep` |
 | `/review [对象]` | 评审 | study.json 新增 review |

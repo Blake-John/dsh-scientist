@@ -59,24 +59,33 @@ whenToUse: 进入新方向、判断选题价值、写综述骨架、给合作者
 把 gap 分成「真空白 / 已有人做但做得不好 / 伪空白（术语差异）」三类。
 
 ### 6. 产出
+
+命令闭环的出口是**单文件主报告** `reports/landscape-<topic>.md`；
+`reports/landscape-<topic>/` 下的 scope.md / timeline.md / refs.md 是可选的中间工作笔记。
+
 ```
-reports/landscape-<topic>/
+reports/landscape-<topic>.md     主报告（命令闭环的出口，下节模板）
+reports/landscape-<topic>/       可选工作笔记
   scope.md            决策问题与边界
-  report.md           主报告（下节模板）
-  refs.md             引用清单（编号 → DOI/arXiv id → 一句话贡献）
+  refs.md             引用清单（citekey → DOI/arXiv id → 一句话贡献）
   timeline.md         转折点时间线
 ```
-`report.md` 结构：
+
+`reports/landscape-<topic>.md` 结构：
 1. 一句话结论（这个方向现在处于什么状态、值不值得做、从哪切入）
 2. 边界与决策问题
 3. 流派地图（每派：假设/贡献/代价/代表工作）
 4. 时间线（转折点）
-5. 对比表
+5. 对比表（Markdown 表格）
 6. 开放问题与 gap 判定（三类）
 7. 推荐的下一步（最小验证动作，具体到「跑什么/读什么/推什么」）
 8. 不确定性声明（检索覆盖度、没读到的语言/库、可能漏的术语）
 
-最后 `record_save` 归档报告目录（notes 写明检索日期与源），结论引用工件名与版本。
+**引用格式**：正文统一用 key 式 `[@key]` 或 `\cite{key}`，条目用 `lit_bib` 落到
+`literature/references.bib`；`/survey` 的出口校验会检查报告里的每个 citekey 都能在 bib 找到。
+不要用编号制 `[1]`——`min-citations` 只统计 key 式引用。
+
+最后 `record_save` 归档报告（notes 写明检索日期与源），结论引用工件名与版本。
 
 ## 质量红线
 

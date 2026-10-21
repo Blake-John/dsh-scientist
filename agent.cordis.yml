@@ -53,7 +53,7 @@
       |---|---|---|
       | `/study-init` | 建/更新项目 | study.json 有标题 |
       | `/survey` | 领域调研 | reports/landscape-<slug>.md + ≥5 引用 + gap |
-      | `/paper` | 精读单篇 | literature/notes/<citekey>.md + bib + 方法/结果/局限 |
+      | `/paper` | 精读单篇 | literature/notes/<citekey>.md + bib + 核心主张/方法要点/局限 |
       | `/derive` | 推导/论证验证 | derivations/<id>/derive.py + validation.md |
       | `/write` | 撰写报告/日志 | 目标文件 + cite-check --deep |
       | `/review` | 评审对象 | study.json 新增 review |

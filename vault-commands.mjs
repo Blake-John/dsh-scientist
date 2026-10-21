@@ -86,15 +86,15 @@ const LOOP_COMMANDS = [
       const slug = slugify(arg, 'topic')
       const artifact = `reports/landscape-${slug}.md`
       return {
-        requires: [`file:${artifact}`, `min-citations:${artifact}:5`],
-        checks: [`contains:${artifact}:gap`, `markdown-table:${artifact}`, 'cite-check'],
+        requires: [`file-since-open:${artifact}`, `min-citations:${artifact}:5`],
+        checks: [`contains:${artifact}:gap`, `markdown-table:${artifact}`, `citations-bib:${artifact}`],
         workMin: 3,
         artifacts: [artifact],
-        mustContain: ['≥5 条编号引用（[@key] 或 \\cite{key}）', '方法对比表（Markdown 表格）', 'gap 清单'],
+        mustContain: ['≥5 条 key 式引用（[@key] 或 \\cite{key}）', '方法对比表（Markdown 表格）', 'gap 清单'],
         steps: [
           '界定方向边界与子问题',
           '梳理流派与代表工作（每条带引用）',
-          '用 lit_bib 把引用的文献落到 literature/references.bib（cite-check 会校验）',
+          '用 lit_bib 把引用的文献落到 literature/references.bib（报告里的 citekey 必须能在 bib 找到）',
           '时间线与方法/指标对比（Markdown 表格）',
           '开放问题与 gap 清单',
           '最小切入点建议',
@@ -112,18 +112,18 @@ const LOOP_COMMANDS = [
       // key-agnostic：citekey 由元数据（第一作者姓+年份+关键词）决定，
       // 命令入口在解析 DOI/标题之前不知道，所以不把参数 slug 当 key。
       return {
-        requires: ['paper-note:方法|结果|局限'],
+        requires: ['paper-note:核心主张|方法要点|局限'],
         checks: [],
         workMin: 2,
         artifacts: ['literature/notes/<citekey>.md（本次新建或更新）', 'literature/references.bib（对应条目）'],
         mustContain: [
-          '方法 / 结果 / 局限 三节',
+          '核心主张 / 方法要点 / 局限 三节（按 literature-retrieval 的笔记模板，每节有实质内容）',
           'citekey 遵循 <第一作者姓><年份><关键词>，笔记文件名与 bib 条目名一致',
         ],
         steps: [
           '取全文（lit_pdf）并先用 pdf_outline 画像',
           '用 lit_doi 核对元数据，按 <第一作者姓><年份><关键词> 确定 citekey',
-          '分节精读：方法 / 结果 / 局限',
+          '按 literature-retrieval 的笔记模板精读：核心主张 / 方法要点 / 证据强度 / 局限 / 与本课题的关系',
           '写笔记 literature/notes/<citekey>.md，并用 lit_bib(citekey=…) 落 bib',
         ],
       }
@@ -139,15 +139,15 @@ const LOOP_COMMANDS = [
       const id = slugify(arg, 'derivation')
       const dir = `derivations/${id}`
       return {
-        requires: [`file:${dir}/derive.py`, `executable:${dir}/derive.py`, `file:${dir}/validation.md`],
-        checks: [`contains-any:${dir}/validation.md:数值|量纲|极限|反例|文献`],
+        requires: [`file-since-open:${dir}/derive.py`, `executable:${dir}/derive.py`, `file-since-open:${dir}/validation.md`],
+        checks: [`contains-any:${dir}/validation.md:数值|量纲|极限|反例|文献|小参数|展开|不确定度|蒙特卡洛`],
         workMin: 3,
         artifacts: [`${dir}/derive.py`, `${dir}/validation.md`],
-        mustContain: ['至少一条可执行的验证记录（数值/量纲/极限/反例/文献对照）'],
+        mustContain: ['至少一条可执行的验证记录（数值/量纲/极限/反例/文献对照/小参数展开/不确定度）'],
         steps: [
           '把命题形式化（符号、假设、边界条件）',
           '写成可重跑脚本 derive.py',
-          '多路验证：数值代入 / 量纲 / 极限 / 反例 / 文献对照',
+          '多路验证：数值代入 / 量纲 / 极限 / 反例 / 小参数展开 / 不确定度 / 文献对照',
           '把验证结果与不确定处写入 validation.md',
         ],
       }
@@ -163,7 +163,7 @@ const LOOP_COMMANDS = [
     plan(arg) {
       const target = arg ? (arg.includes('/') ? arg : `reports/${slugify(arg, 'report')}.md`) : `reports/progress-${today()}.md`
       return {
-        requires: [`file:${target}`],
+        requires: [`file-since-open:${target}`],
         checks: ['cite-check-deep'],
         workMin: 0,
         artifacts: [target],

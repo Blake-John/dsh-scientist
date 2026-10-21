@@ -57,9 +57,14 @@ try {
   ok(slugify('航磁补偿') === '航磁补偿', `slugify 中文：${slugify('航磁补偿')}`)
   ok(slugify('PINN 求解器') === 'pinn-求解器', `slugify 中英混合：${slugify('PINN 求解器')}`)
   ok(slugify('中文/标题') === '中文-标题', `slugify 中文路径分隔：${slugify('中文/标题')}`)
-  ok(slugify('Müller') === 'muller', `slugify 组合音标：${slugify('Müller')}`)
+  ok(slugify('Müller') === 'mu-ller', `slugify 音标不剥离（避免与 Muller 撞名）：${slugify('Müller')}`)
+  ok(slugify('Muller') === 'muller', `slugify 无音标：${slugify('Muller')}`)
+  ok(slugify('Müller') !== slugify('Muller'), 'Müller 与 Muller 必须区分')
   ok(slugify('../etc/passwd') === 'etc-passwd', `slugify 防穿越：${slugify('../etc/passwd')}`)
   ok(slugify('A_B.C') === 'a_b.c', `slugify 保留 . _：${slugify('A_B.C')}`)
+  const longSlug = slugify('中'.repeat(200))
+  ok(Buffer.byteLength(longSlug, 'utf8') <= 120, `超长中文必须截断到 ≤120 字节：${Buffer.byteLength(longSlug, 'utf8')}`)
+  ok(/-[0-9a-f]{6}$/.test(longSlug), `截断后应有短哈希：${longSlug.slice(-10)}`)
 
   // ── 2. resolveRoot / withinRoot ───────────────────────────────────────────
   const proj = join(dir, 'proj')

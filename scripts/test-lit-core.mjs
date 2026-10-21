@@ -52,6 +52,16 @@ const ok = (cond, msg) => {
   ok(broken.entry.includes('eprint = {1706.03762}'), 'arxiv eprint')
   ok(broken.entry.startsWith('% TODO:'), '缺字段时写 TODO 注释')
 
+  // 不完整的条目必须降级为 @misc，避免写出 cite-check 必然拒绝的 @article
+  const noVenue = toBibtex({ authors: ['A'], year: 2020, title: 'No Venue', type: 'article', doi: '10.1/nv' }, 'novenue')
+  ok(noVenue.kind === 'misc', `空 venue 应降级 misc：${noVenue.kind}`)
+  ok(!noVenue.entry.includes('@article'), '不得输出缺 journal 的 @article')
+  ok(noVenue.problems.some((p) => p.includes('缺 venue')), `应提示缺 venue：${noVenue.problems}`)
+
+  const noYear = toBibtex({ authors: ['A'], title: 'No Year', venue: 'J', type: 'article', doi: '10.1/ny' }, 'noyear')
+  ok(noYear.kind === 'misc', `缺 year 应降级 misc：${noYear.kind}`)
+  ok(noYear.problems.includes('缺 year'), `缺 year: ${noYear.problems}`)
+
   // 中文标题 slug 为空时不能全部落到 untitled（否则同年后缀冲突）
   const cjk1 = makeCitekey({ authors: ['张三'], year: 2024, title: '注意力机制研究' })
   const cjk2 = makeCitekey({ authors: ['李四'], year: 2024, title: '扩散模型综述' })

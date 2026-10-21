@@ -36,17 +36,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 /**
  * 工件名 → 目录名：小写、保留 Unicode 字母/数字与 -_.，其余折叠为 -。
  * 保留中文等非 ASCII 字母（科研项目名常是中文）；ASCII 输入的输出保持不变。
- * 组合音标先去掉（Müller → muller），避免 NFKD 分解后留下连字符。
+ * 音标不剥离（Müller → mu-ller），避免与 Muller 撞名；超长名字截断后加短哈希。
  */
 export function slugify(value, fallback = 'item') {
-  const slug = String(value ?? '')
+  const raw = String(value ?? '')
+  let slug = raw
     .normalize('NFKD')
-    .replace(/\p{M}+/gu, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}._-]+/gu, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^[-.]+|[-.]+$/g, '')
-  return slug || fallback
+  if (!slug) return fallback
+  // 文件名上限：中文 UTF-8 3 字节/字，超长会 ENAMETOOLONG；截断后加短哈希防碰撞
+  if (Buffer.byteLength(slug, 'utf8') > 120) {
+    const hash = createHash('sha256').update(raw).digest('hex').slice(0, 6)
+    let cut = ''
+    for (const ch of slug) {
+      if (Buffer.byteLength(cut + ch, 'utf8') > 112) break
+      cut += ch
+    }
+    slug = `${cut}-${hash}`
+  }
+  return slug
 }
 
 /** 项目根：向上找含这些标记的目录 */

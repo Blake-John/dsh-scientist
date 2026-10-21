@@ -222,10 +222,10 @@
 | 命令 | 参数 | 自动建项目 | 出口契约 | 拦停上限 |
 |---|---|---|---|---|
 | `/study-init` | `[标题] --question "…"` | — | study.json 有标题 | 0 |
-| `/survey` | `<方向>` | ✅ | landscape 报告 + ≥5 引用 + gap 段 + cite-check + work≥3 | 3 |
-| `/paper` | `<DOI\|id\|标题>` | ✅ | 笔记 + 三节结构 + bib 条目 + work≥2 | 3 |
-| `/derive` | `<命题\|流程\|逻辑>` | ✅ | derive.py 可执行 + validation.md + work≥3 | **5** |
-| `/write` | `[目标]` 默认进度日志 | ✅ | 目标文件 + `cite-check --deep` | 3 |
+| `/survey` | `<方向>` | ✅ | landscape 报告（本次更新）+ ≥5 key 式引用 + gap 段 + citekey↔bib + work≥3 | 3 |
+| `/paper` | `<DOI\|id\|标题>` | ✅ | 笔记（本次更新）+ 核心主张/方法要点/局限三节有内容 + bib 条目 + work≥2 | 3 |
+| `/derive` | `<命题\|流程\|逻辑>` | ✅ | derive.py（本次更新）可执行 + validation.md 含验证路线 + work≥3 | **5** |
+| `/write` | `[目标]` 默认进度日志 | ✅ | 目标文件（本次更新）+ `cite-check --deep` | 3 |
 | `/review` | `[对象]` 默认全部未验证项 | ✅ | 新增 study_review 记录 | 3 |
 | `/status` | `[id] --brief --json --abort` | — | 只读，不建 loop、不拦停 | **0** |
 
