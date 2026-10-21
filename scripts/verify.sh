@@ -37,6 +37,7 @@ run "cite-check --deep 测试（全链校验）" node scripts/test-cite-check-de
 run "挂载冒烟（包名解析 + apply + 工具契约）" node scripts/smoke-vault.mjs
 run "约定 loop 测试（状态机 / 出口校验 / CLI）" node scripts/test-vault-loop.mjs
 run "斜杠命令测试（注册 / 自动建项目 / 互斥 / dry-run / status）" node scripts/test-vault-commands.mjs
+run "强制层测试（惰性 / 注入 / 拦停 / 超限降级 / guard）" node scripts/test-vault-enforce.mjs
 
 if [[ "${1:-}" == "--live" ]]; then
   run "lit-tools 联网实测（lit_doi / lit_search / lit_bib / lit_pdf ×2）" node scripts/test-lit-tools.mjs --live

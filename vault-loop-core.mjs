@@ -163,7 +163,10 @@ export async function noteLoop(root, id, note) {
     }
     loop.work.push({ at: nowISO(), note: text })
     loop.lastActivity = nowISO()
-    if (loop.status === 'stalled') loop.status = 'running' // 有动作即复活
+    if (loop.status === 'stalled') {
+      loop.status = 'running' // 有动作即复活
+      loop.nudges = 0          // 复活后重置拦停预算，否则永远不再拦
+    }
     return loop
   })
 }
@@ -173,6 +176,17 @@ export async function bumpNudge(root, id) {
   return await mutateLoop(root, id, (loop) => {
     loop.nudges = (loop.nudges ?? 0) + 1
     loop.lastActivity = nowISO()
+    return loop
+  })
+}
+
+/** 拦停超限：置 stalled 并放行（enforcement 用） */
+export async function stallLoop(root, id, reason = '拦停次数超限') {
+  return await mutateLoop(root, id, (loop) => {
+    if (loop.status !== 'running') return loop
+    loop.status = 'stalled'
+    loop.stalledAt = nowISO()
+    loop.stallReason = reason
     return loop
   })
 }
