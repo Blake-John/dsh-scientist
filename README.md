@@ -8,6 +8,7 @@
 |---|---|---|
 | 领域调研 | 把方向测绘成可决策的地图：流派、时间线、方法对比、gap 判定、最小切入点 | `domain-survey` |
 | 文献检索 | 4 个原生工具：`lit_search`（多源检索）/ `lit_doi`（DOI 元数据）/ `lit_bib`（生成 BibTeX）/ `lit_pdf`（取全文） | `literature-retrieval` |
+| 科研记录 | 12 个原生工具：`study_*`（9）+ `record_*`（3） | `research-loop` / `artifact-provenance` |
 | 读 PDF | 页面画像 → 结构化 md / 纯文本 / 表格 / 渲染成图四路并用，公式与图表视觉兜底，产出带页码的笔记 | `pdf-reading` |
 | 专业推导 | sympy 符号推导写成可重跑脚本 + pint 量纲 + uncertainties 误差传播 + 数值/极限/展开/文献交叉验证 + LaTeX 成文 | `derivation-lab` |
 
@@ -61,7 +62,7 @@ Unpaywall（422 需真实邮箱）、Anna's Archive / libgen.is（连接失败�
 
 | 环节 | 机制 | 技能/工具 |
 |---|---|---|
-| 环境可复现 | conda/uv 环境固定 → `envs/*.lock.yml` → `artifact_save(envFile)` 记录环境哈希 | `conda-environments` |
+| 环境可复现 | conda/uv 环境固定 → `envs/*.lock.yml` → `record_save(env)` 记录环境哈希 | `conda-environments` |
 | 数据可追溯 | `data/manifest.tsv`：来源、获取命令、sha256、许可、版本；大文件不进 git/工件 | `data-inventory` |
 | 图可重跑 | `plot.py` + 矢量 PDF + 色盲友好 + caption 四要素；图是工件不是截图 | `figure-craft` |
 | 图型选对 | 数据图 / 流程图（Mermaid 内联渲染）/ 关系图（Graphviz）/ 论文插图（TikZ）的选型与规范 | `diagram-craft` |
@@ -74,7 +75,6 @@ profile 层全局挂载的三个引擎：
 
 - `research_*` —— ReAct 研究循环（提问 → 假设 → 实验 → 观察 → 分析 → 结论 → 迭代），状态在 `research-manifest.json`
 - `artifact_*` —— 版本化工件 + 溯源（`artifacts/<name>/v<N>/`、SHA-256、`provenance.md`、可复现）
-- `remote_*` —— SSH / SLURM 远程计算（长跑仿真、GPU、集群）
 
 ## 安装（bundle 包，一条命令）
 
@@ -115,7 +115,7 @@ node scripts/build-patch.mjs    # agent.cordis.yml → cordis.patch.yml
 
 | 依赖 | 说明 |
 |---|---|
-| `dsh-science` bundle | 提供 `research_*` / `artifact_*` / `remote_*`。从 profile 移除后本 preset 会失去这三组工具。 |
+| 无外部 bundle 依赖 | 文献、PDF、科研记录全部是本包原生工具；不再需要 `dsh-science`。 |
 | Node ≥22.19 | 文献工具用内置 `fetch`，**无额外运行时依赖**（原 paper-search-mcp 的 uv/uvx/Python 已不再需要）。 |
 | Python ≥3.10 + sympy/numpy/scipy/matplotlib/pandas | 推导与数值验证（本机已有）。 |
 | `pint` 0.24.4 + `uncertainties` 3.2.3 | 量纲与误差传播（本机已装）。 |
@@ -141,9 +141,12 @@ scientist/
   lit-core.mjs        文献核心：源适配器 / 去重 / 缓存 / 退避 / BibTeX / LibGen / PDF 校验
   lit-tools.mjs       4 个文献工具（lit_search / lit_doi / lit_bib / lit_pdf）
   pdf-tools.mjs       2 个 PDF 工具（pdf_outline / pdf_read）
+  vault-core.mjs      共享底座：文件锁 / 原子写 / 流式哈希 / 硬链接去重 / 忽略遍历
+  vault-record.mjs    3 个工件与运行工具（record_save / record_verify / record_reproduce）
+  vault-study.mjs     9 个研究状态工具（study_init … study_claim）
   preset.yml          目录发现形态的元数据（本部署不用，保留兼容）
   agent.cordis.yml    agent 平面组合：人格 + 工具面 + 技能 provider + 文献 MCP
-  skills/             16 个技能
+  skills/             15 个技能
     domain-survey/            自建：领域调研
     literature-retrieval/     自建：文献检索与精读
     pdf-reading/              自建：PDF 阅读（pymupdf4llm / pdftotext / pdfplumber / 渲染+视觉）
@@ -151,7 +154,7 @@ scientist/
     figure-craft/             自建：数据图规范
     diagram-craft/            自建：示意图/流程图选型（Mermaid/Graphviz/TikZ）
     stats-and-inference/      自建：统计检验与报告规范
-    conda-environments/       改写自 dsh-science：环境固定与 envFile
+    conda-environments/       改写自 dsh-science：环境固定与 record_save(env)
     data-inventory/           改写自 dsh-science：数据清单
     research-loop/            复制自 dsh-science：ReAct 循环
     science-project-setup/    复制自 dsh-science：项目初始化
@@ -198,7 +201,7 @@ bash scripts/verify.sh --offline    # 跳过需要网络的 MCP 探测
 
 | 检查 | 结果 |
 |---|---|
-| 结构（21 个顶层插件行、16 个技能 frontmatter、preset.yml） | 通过 |
+| 结构（24 个顶层插件行、15 个技能 frontmatter、preset.yml） | 通过 |
 | loader 方言（真实 `entryListSchema` + 7 个 `!!js` 求值） | 通过 |
 | bundle patch 与源组合一致 / 注册正确 | 通过 |
 | skills-provider 单测（frontmatter + 15 候选 + 正文加载） | 通过 |
