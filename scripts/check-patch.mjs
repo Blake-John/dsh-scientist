@@ -166,25 +166,30 @@ function auditConfigs(list, checkoutRoot, problems) {
 
   let checked = 0
   for (const row of flatten(list)) {
-    if (!row.config || typeof row.config !== 'object') continue
-    const used = Object.keys(row.config).filter((key) => key !== 'plugins')
-    if (!used.length) continue
     if (!String(row.name).startsWith('@deepseek-ai/')) continue
+    const hasConfig = row.config && typeof row.config === 'object' && !Array.isArray(row.config)
+    const used = hasConfig ? Object.keys(row.config).filter((key) => key !== 'plugins') : []
     const srcPath = nameToSrc.get(row.name)
-    if (!srcPath) {
-      problems.push(`${row.id}: 找不到 ${row.name} 的源码，无法校验 config 字段`)
-      continue
-    }
+    // 找不到源码不是错误：包名合法性已由 auditShippedNames 负责，
+    // 这里只做「能读到 schema 就比对」的增量校验。
+    if (!srcPath) continue
     const text = readFileSync(srcPath, 'utf8')
     const start = Math.max(text.indexOf('const Config'), text.indexOf('static Config'))
     const body = start >= 0 ? /z\.object\(\{([\s\S]*?)\n\}\)/.exec(text.slice(start, start + 4000)) : null
     if (!body) continue
     const allowed = new Set([...body[1].matchAll(/^\s{2}([a-zA-Z]\w*)\s*:/gm)].map((m) => m[1]))
     if (!allowed.size) continue
+    const required = new Set(
+      [...body[1].matchAll(/^\s{2}([a-zA-Z]\w*)\s*:\s*[^\n]*\.required\(\)/gm)].map((m) => m[1]),
+    )
     checked += 1
     const unknown = used.filter((key) => !allowed.has(key))
     if (unknown.length) {
       problems.push(`${row.id}: config 含 ${row.name} 不接受的字段 ${unknown.join(', ')}（合法：${[...allowed].join(', ')}）`)
+    }
+    const missingRequired = [...required].filter((key) => !used.includes(key))
+    if (missingRequired.length) {
+      problems.push(`${row.id}: ${row.name} 要求必填字段 ${missingRequired.join(', ')}，但未提供`)
     }
   }
   return checked
