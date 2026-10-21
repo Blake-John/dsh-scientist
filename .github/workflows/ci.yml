@@ -24,6 +24,14 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
+      - name: 安装 PDF 工具链（pdf_* 测试需要）
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          python3 -m pip install --quiet --user pymupdf pymupdf4llm pdfplumber
+          python3 -c "import pymupdf, pymupdf4llm, pdfplumber; print('python deps ok')"
+          which pdftotext pdftoppm
+
       - name: 环境自检
         run: |
           node -v
@@ -33,6 +41,9 @@ jobs:
       # 本包零运行时依赖，不需要 npm ci；直接跑自带的 11 项校验
       - name: 全量校验（11 项）
         run: npm run check
+        env:
+          # 无 DSH checkout 时 check-loader/roster/patch 会优雅跳过（打印警告）
+          DSH_CHECKOUT: /nonexistent
 
       - name: 打包冒烟
         run: |

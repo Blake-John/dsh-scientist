@@ -25,6 +25,17 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: 安装 PDF 工具链（pdf_* 测试需要）
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils
+          python3 -m pip install --quiet --user pymupdf pymupdf4llm pdfplumber
+          python3 -c "import pymupdf, pymupdf4llm, pdfplumber; print('python deps ok')"
+          which pdftotext pdftoppm
+
+      - name: 升级 npm（可信发布 / provenance 需要 npm >= 11.5.2）
+        run: npm install -g npm@latest && npm -v
+
       - name: 校验 tag 与 package.json 版本一致
         run: |
           PKG=$(node -p "require('./package.json').version")
@@ -41,6 +52,8 @@ jobs:
 
       - name: 全量校验
         run: npm run check
+        env:
+          DSH_CHECKOUT: /nonexistent
 
       - name: 包内容守卫（必须有 bundle 标记与全部技能）
         run: |
@@ -71,6 +84,18 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: 凭据预检（配了 NPM_TOKEN 就先验它有没有效）
+        if: env.HAS_TOKEN == 'true'
+        run: |
+          echo "检查 NPM_TOKEN 是否有效…"
+          npm whoami || {
+            echo "::error::NPM_TOKEN 无效（401）。请重新生成 granular token："
+            echo "::error::  权限 Read and write + Bypass 2FA + 勾选 dsh-scientist 包"
+            exit 1
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 发布（NPM_TOKEN）
         if: steps.probe.outputs.exists != 'true' && env.HAS_TOKEN == 'true'
