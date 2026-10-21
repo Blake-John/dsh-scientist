@@ -10,8 +10,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { nowISO, readJson, resolveRoot, slugify, withinRoot } from './vault-core.mjs'
-import { closeLoop, createLoop, listLoops, LOOP_STATE_LABEL, readLoop } from './vault-loop-core.mjs'
+import { readJson, resolveRoot, slugify } from './vault-core.mjs'
+import { createLoop, listLoops, readLoop } from './vault-loop-core.mjs'
 import { ensureStudy } from './vault-study.mjs'
 
 export const name = 'dsh-scientist-vault-commands'
@@ -311,7 +311,7 @@ function makeLoopHandler(ctx, spec) {
     if (sameKind.length) {
       return {
         kind: 'error',
-        text: `已有 ${spec.name} loop 在跑（${sameKind[0].id}）；先 \`vault loop close\` 或 \`/status --abort\``,
+        text: `已有 ${spec.name} loop 在跑（${sameKind[0].id}）；先 \`loop_close()\` 或 \`/status --abort\``,
       }
     }
 
@@ -411,7 +411,8 @@ export function apply(ctx) {
           return { kind: 'success', text: JSON.stringify({ study, loops }, null, 2) }
         }
 
-        if (!flags.brief) {
+        const hasAnything = Boolean(await readJson(join(root, 'research', 'study.json'), null)) || (await listLoops(root)).length > 0
+        if (!flags.brief && hasAnything) {
           invocation.agent.followup(
             userMessage(
               [

@@ -126,6 +126,26 @@ try {
   const json = await invoke('status', '--json')
   ok(json.kind === 'success' && /"loops"/.test(json.text), '--json 输出结构化')
 
+  // ── 空工作区：/status 不注入无意义的复看 ──
+  const emptyRoot = await mkdtemp(join(tmpdir(), 'vault-cmd-empty-'))
+  try {
+    const reg = []
+    apply({
+      get: (n) => (n === 'sessions' ? { get: () => ({ cwd: emptyRoot }) } : undefined),
+      inject: (_d, cb) => cb({ commands: { register: (def) => reg.push(def) } }),
+    })
+    const localFollowups = []
+    const st = await reg.find((d) => d.name === 'status').handler({
+      agent: { id: 'e', followup: (m) => localFollowups.push(m) },
+      rawInput: '',
+      attachments: [],
+    })
+    ok(/没有研究项目/.test(st.text), `空工作区提示：${st.text}`)
+    ok(localFollowups.length === 0, `空工作区不应注入复看，实际 ${localFollowups.length}`)
+  } finally {
+    await rm(emptyRoot, { recursive: true, force: true })
+  }
+
   // ── /status --abort 逃生舱 ──
   const target = (await listLoops(root, { status: 'running' }))[0]
   const aborted = await invoke('status', `--abort ${target.id}`)

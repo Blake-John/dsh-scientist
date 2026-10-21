@@ -9,7 +9,7 @@
 //
 // 查询类操作（list/show）不单独给工具：/status 命令与 pre-step 提醒已经覆盖。
 
-import { nowISO, optStr, readJson, resolveRoot, vaultErr, withinRoot } from './vault-core.mjs'
+import { optStr, resolveRoot, vaultErr } from './vault-core.mjs'
 import { closeLoop, listLoops, noteLoop, readLoop, renderLoop, verifyExit } from './vault-loop-core.mjs'
 
 export const name = 'dsh-scientist-vault-loop-tools'
@@ -30,12 +30,18 @@ const tool = ({ name, description, parameters, presentTitle, execute, outputSche
   presentCall: (args) => ({ card: 'generic', title: presentTitle, kind: 'other', rawInput: args }),
 })
 
-/** 解析目标 loop：给了 id 用它，否则取最近进行中的一个 */
+/**
+ * 解析目标 loop：给了 id 用它；否则优先最近的 running，其次 stalled
+ * （stalled 也要能被 loop_note 复活，否则卡住的 loop 就再也动不了）。
+ */
 async function resolveLoop(root, id) {
   if (id) return await readLoop(root, id)
-  const running = await listLoops(root, { status: 'running' })
-  if (!running.length) throw vaultErr('ERR_NOT_FOUND', '当前没有进行中的 loop')
-  return running[0]
+  const all = await listLoops(root)
+  const running = all.find((loop) => loop.status === 'running')
+  if (running) return running
+  const stalled = all.find((loop) => loop.status === 'stalled')
+  if (stalled) return stalled
+  throw vaultErr('ERR_NOT_FOUND', '当前没有进行中或卡住的 loop')
 }
 
 async function cmdNote(args, exec) {

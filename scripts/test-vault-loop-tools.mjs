@@ -25,7 +25,7 @@ try {
 
   // 无 loop
   const none = await call('loop_note', { note: 'x' }).then(() => 'no-error', (e) => e.message)
-  ok(/没有进行中的 loop/.test(none), `无 loop 应报错：${none}`)
+  ok(/没有进行中或卡住的 loop/.test(none), `无 loop 应报错：${none}`)
 
   const loop = await createLoop(root, { kind: 'survey', arg: 'x', requires: ['file:reports/x.md'], workMin: 2 })
 
@@ -66,8 +66,9 @@ try {
   await noteLoop(root, l3.id, 'a'); await noteLoop(root, l3.id, 'b')
   const core = await import('../vault-loop-core.mjs')
   await core.stallLoop(root, l3.id, '测试')
-  const revived = await call('loop_note', { loop_id: l3.id, note: '继续' })
+  const revived = await call('loop_note', { note: '继续' })   // 不传 id：应命中 stalled 的那个
   ok(/复活/.test(revived), `复活提示：${revived}`)
+  ok(revived.includes(l3.id), `应命中 stalled 的 loop：${revived}`)
   const r = await readLoop(root, l3.id)
   ok(r.status === 'running' && r.nudges === 0, `复活状态：${r.status}/${r.nudges}`)
 } finally {
