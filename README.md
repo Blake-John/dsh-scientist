@@ -69,12 +69,28 @@ Unpaywall（422 需真实邮箱）、Anna's Archive / libgen.is（连接失败�
 | 统计说得清 | 检验选型、假设检查、多重比较校正、bootstrap CI、效应量、多种子实验纪律 | `stats-and-inference` |
 | 引用可校验 | `cite-check`：bib 必填字段、DOI↔Crossref/DataCite 元数据比对、正文引用与 bib 双向对应 | `scripts/cite-check.mjs` |
 
-## 底座（复用 dsh-science，不重复挂载）
+## 科研记录（12 个原生工具，替代 dsh-science 的 research_*/artifact_*）
 
-profile 层全局挂载的三个引擎：
+研究状态 9 个 + 工件与运行 3 个，全部本地文件、无第三方依赖。设计依据见
+[docs/research-record-plan.md](docs/research-record-plan.md)（对照 W3C PROV / RO-Crate、
+Sandve 2013 可复现十条、Schnell 2015 计算实验记录本十条）。
 
-- `research_*` —— ReAct 研究循环（提问 → 假设 → 实验 → 观察 → 分析 → 结论 → 迭代），状态在 `research-manifest.json`
-- `artifact_*` —— 版本化工件 + 溯源（`artifacts/<name>/v<N>/`、SHA-256、`provenance.md`、可复现）
+| 工具 | 作用 |
+|---|---|
+| `study_init` / `study_state` | 建项目 / 全景：问题（含历史）、阶段、假设、实验、决策、评审、证据覆盖率、悬空引用 |
+| `study_hypothesis` / `study_experiment` | 可证伪假设（可带 citekeys）/ 实验计划（步骤、预期、种子、环境） |
+| `study_finding` / `study_phase` | 观察与结论（推进假设状态，`nextQuestion` 归档旧问题）/ 阶段推进（可退一级，须给原因） |
+| `study_decision` | 决策日志：选了什么、否决了什么、为什么——纯结果记录答不出的部分 |
+| `study_review` / `study_claim` | 评审归档 / 论断绑定证据（citekey + 工件） |
+| `record_save` | 工件 + 运行：逐文件 SHA-256、命令、退出码、耗时、种子、环境、输入输出、关联 |
+| `record_verify` / `record_reproduce` | 校验（含多余文件、环境漂移、种子缺失）/ 复现指引（输入逐个回查哈希） |
+
+**相对 dsh-science 的实质改进**：记录执行成败与耗时（PROV `actionStatus`）、随机种子（Sandve R6）、
+图的原始数据（R7）、假设↔文献、论断↔证据（R9）；换迭代时旧问题归档而非覆盖；历史溢出转 JSONL；
+`verify` 检出目录里多出来的文件；`diff` 给行级统计。
+
+配套 CLI（不占模型上下文）：`vault index | list | show | diff | deprecate | prune | export`；
+`cite-check --deep` 做全链校验（无文献支撑的假设、无证据的论断、悬空引用）。
 
 ## 安装（bundle 包，一条命令）
 
