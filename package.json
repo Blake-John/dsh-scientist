@@ -59,8 +59,14 @@
   "scripts": {
     "build:patch": "node scripts/build-patch.mjs",
     "lit": "node scripts/lit.mjs",
-    "check": "node scripts/build-patch.mjs --check && node scripts/check-patch.mjs && node scripts/test-skills-provider.mjs && node scripts/test-lit-core.mjs && node scripts/test-lit-tools.mjs && node scripts/test-pdf-tools.mjs && node scripts/test-lit-lib.mjs && node scripts/test-vault-core.mjs && node scripts/test-vault-record.mjs && node scripts/test-vault-study.mjs && python3 scripts/validate.py",
+    "check": "node scripts/build-patch.mjs --check && node scripts/check-patch.mjs && node scripts/test-skills-provider.mjs && node scripts/test-lit-core.mjs && node scripts/test-lit-tools.mjs && node scripts/test-pdf-tools.mjs && node scripts/test-lit-lib.mjs && node scripts/test-vault-core.mjs && node scripts/test-vault-record.mjs && node scripts/test-vault-study.mjs && node scripts/test-vault-cli.mjs && node scripts/test-cite-check-deep.mjs && python3 scripts/validate.py",
     "check:live": "node scripts/test-lit-tools.mjs --live",
     "prepublishOnly": "npm run check"
+  },
+  "bin": {
+    "lit": "scripts/lit.mjs",
+    "lit-lib": "scripts/lit-lib.mjs",
+    "cite-check": "scripts/cite-check.mjs",
+    "vault": "scripts/vault.mjs"
   }
 }

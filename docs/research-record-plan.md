@@ -286,3 +286,23 @@ lit-lib（citekey）
 
 省下的半天改投 **P0.5 真装冒烟**：本地打 tarball → 装进 profile → 重启 → 确认 10 个工具确实注册且可调用。
 理由：persona `text` 与 delegation `worker-thread` 两次事故都发生在这一层，静态检查无法覆盖。
+
+
+## 实施进度（2026-10-21）
+
+| 阶段 | 状态 | 交付 |
+|---|---|---|
+| P0 | ✅ | `vault-core.mjs`：文件锁、原子写、流式哈希、硬链接去重、忽略遍历；24 条断言 + 4 个变异测试 |
+| P1 | ✅ | `vault-record.mjs`：`record_save` / `record_verify` / `record_reproduce`；36 条断言 + 4 个变异测试 |
+| P2 | ✅ | `vault-study.mjs`：`study_init` / `state` / `hypothesis` / `experiment` / `finding` / `decision` / `review` / `phase`；44 条断言 + 4 个变异测试 |
+| P3 | ✅ | `study_claim`（论断↔证据）、`INDEX.md` 自动生成、`scripts/vault.mjs`（index/list/show/diff/prune/export）、`cite-check --deep`；CLI 与 deep 各自成测 + 4 个变异测试 |
+| P4 | ⏳ | preset 接线、技能更新、删除 remote-compute |
+
+**工具总数 12**：`record_*` 3 + `study_*` 9。
+验收基线：`bash scripts/verify.sh` = 16 项全过。
+
+### 实施中发现并修正的实现缺陷
+
+1. `inputs[].path` 曾只存「相对源目录」路径，导致复现时按项目根找不到原文件 → 增加 `sourcePath`。
+2. 阶段回退标注用 `change.to < change.from` 判断，是字符串字典序（`'experiment' < 'analysis'` 为 false）→ 改用阶段索引 `rewound: j < i`。
+3. `vault prune` 的最新版保护有两处冗余，单拆任一处不触发测试 → 已加注释说明双保险意图。

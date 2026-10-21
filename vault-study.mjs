@@ -18,7 +18,7 @@
 //   F11 评审可查（study_state 汇总 + reviews[] 挂在假设上）
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   appendJsonl,
@@ -47,6 +47,7 @@ const SCHEMA = 1
 export const PHASES = ['literature', 'hypothesis', 'experiment', 'analysis', 'manuscript', 'concluded']
 export const HYP_STATUSES = ['proposed', 'testing', 'supported', 'refuted', 'inconclusive']
 export const VERDICTS = ['supported', 'refuted', 'inconclusive', 'needs-work']
+export const CLAIM_STATUSES = ['unverified', 'supported', 'contradicted']
 
 const HYP_TRANSITIONS = {
   proposed: ['testing'],
@@ -149,6 +150,93 @@ async function checkCitekeys(root, citekeys) {
   return warnings
 }
 
+// ── 索引（N6）────────────────────────────────────────────────────────────────
+
+const table = (headers, rows) => {
+  if (!rows.length) return '_（空）_'
+  const head = `| ${headers.join(' | ')} |`
+  const sep = `| ${headers.map(() => '---').join(' | ')} |`
+  return [head, sep, ...rows.map((r) => `| ${r.join(' | ')} |`)].join('\n')
+}
+
+const cell = (v) => String(v ?? '').replace(/\|/g, '/').replace(/\n/g, ' ').slice(0, 70)
+
+/** 自动生成 research/INDEX.md —— 人和机器都能一眼看全的研究目录 */
+export function renderIndex(study, recordsIndex = { records: [] }) {
+  const records = recordsIndex.records ?? []
+  const out = []
+  out.push(`# ${study.title || '未命名研究'}`)
+  out.push('')
+  out.push(`- 核心问题：${study.question?.text || '（未设定）'}`)
+  out.push(`- 阶段：**${study.loop?.phase ?? '?'}** · 第 ${study.loop?.iteration ?? 0} 轮 · 更新于 ${study.updatedAt ?? ''}`)
+  const noCite = study.hypotheses.filter((h) => !(h.citekeys ?? []).length)
+  const noEvidence = study.claims.filter((c) => !(c.evidence?.citekeys ?? []).length && !(c.evidence?.records ?? []).length)
+  out.push(`- 证据覆盖：假设 ${study.hypotheses.length - noCite.length}/${study.hypotheses.length} 有文献 · 论断 ${study.claims.length - noEvidence.length}/${study.claims.length} 有证据`)
+  out.push('')
+
+  if (study.question?.history?.length) {
+    out.push('## 问题演进')
+    out.push('')
+    out.push(table(['第几轮', '问题', '被哪次实验关闭'], study.question.history.map((q) => [q.iteration ?? '', cell(q.text), q.closedBy ?? ''])))
+    out.push('')
+  }
+
+  out.push('## 假设')
+  out.push('')
+  out.push(table(['id', '状态', '内容', '文献', '实验'], study.hypotheses.map((h) => [
+    h.id, h.status, cell(h.text), (h.citekeys ?? []).length ? h.citekeys.join(', ') : '⚠ 无', (h.experiments ?? []).join(', ') || '—',
+  ])))
+  out.push('')
+
+  out.push('## 实验')
+  out.push('')
+  out.push(table(['id', '状态', '标题', '假设', '种子', '工件'], study.experiments.map((e) => [
+    e.id, e.status, cell(e.title), e.hypothesis ?? '—', e.seed ?? '**未记录**', (e.records ?? []).join(', ') || '—',
+  ])))
+  out.push('')
+
+  out.push('## 决策')
+  out.push('')
+  out.push(table(['id', '问题', '选择', '否决', '理由'], study.decisions.map((d) => [
+    d.id, cell(d.question), cell(d.chosen), (d.alternatives ?? []).join(', ') || '—', cell(d.rationale),
+  ])))
+  out.push('')
+
+  out.push('## 工件')
+  out.push('')
+  out.push(table(['名称', '类型', '最新版本', '版本数', '更新时间'], records.map((r) => [
+    cell(r.name), r.kind ?? '', `v${r.latest ?? '?'}`, r.versions ?? '', r.updatedAt ?? '',
+  ])))
+  out.push('')
+
+  out.push('## 论断与证据')
+  out.push('')
+  out.push(table(['id', '状态', '论断', '文献', '工件'], study.claims.map((c) => [
+    c.id, c.status, cell(c.text),
+    (c.evidence?.citekeys ?? []).join(', ') || '⚠ 无',
+    (c.evidence?.records ?? []).join(', ') || '⚠ 无',
+  ])))
+  out.push('')
+
+  if ((study.reviews ?? []).length) {
+    out.push('## 评审')
+    out.push('')
+    out.push(table(['id', '结论', '对象', '关联假设'], study.reviews.map((r) => [r.id, r.verdict, cell(r.target), r.hypothesis ?? '—'])))
+    out.push('')
+  }
+
+  out.push('---')
+  out.push('')
+  out.push('由 study_* 工具自动生成；不要手改（会被覆盖）。')
+  return `${out.join('\n')}\n`
+}
+
+async function writeIndex(root, study) {
+  const recordsIndex = await readJson(join(root, 'research', 'records', 'index.json'), { records: [] })
+  await mkdir(join(root, 'research'), { recursive: true })
+  await writeFile(join(root, 'research', 'INDEX.md'), renderIndex(study, recordsIndex), 'utf8')
+}
+
 // ── 1. study_init ───────────────────────────────────────────────────────────
 
 async function cmdInit(args, exec) {
@@ -181,6 +269,7 @@ async function cmdInit(args, exec) {
     }
     await pushHistory(root, study, { action: 'init', detail: `研究「${study.title}」创建`, phase: 'literature' })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
     return [
       `✓ 已创建研究：${study.title}`,
       `  清单 research/study.json · 目录 research/{records,reviews,envs}`,
@@ -311,6 +400,7 @@ async function cmdHypothesis(args, exec) {
     const phaseChange = study.loop.phase === 'literature' ? setPhase(study, 'hypothesis', { via: 'study_hypothesis' }) : null
     await pushHistory(root, study, { action: 'hypothesis', detail: `新增假设 ${id}`, phase: study.loop.phase })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
     const lines = [`✓ 已登记假设 ${id}（${hypothesis.status}）`, `  ${text}`]
     if (citekeys.length) lines.push(`  文献支撑：${citekeys.join(', ')}`)
     else lines.push('  ⚠ 未给 citekeys——该假设暂无文献支撑，会出现在 study_state 的覆盖率里')
@@ -367,6 +457,7 @@ async function cmdExperiment(args, exec) {
       : null
     await pushHistory(root, study, { action: 'experiment', detail: `新增实验 ${id}`, phase: study.loop.phase })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
 
     const lines = [`✓ 已登记实验 ${id}（${experiment.status}）`, `  ${title}`]
     if (hypothesis) lines.push(`  验证假设：${hypothesis.id}（${hypothesis.status}）`)
@@ -435,6 +526,7 @@ async function cmdFinding(args, exec) {
       : null
     await pushHistory(root, study, { action: 'findings', detail: notes.join('；'), phase: study.loop.phase })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
 
     const lines = [`✓ 已记录（${experimentId}）`]
     for (const note of notes) lines.push(`  ${note}`)
@@ -476,6 +568,7 @@ async function cmdDecision(args, exec) {
     study.updatedAt = nowISO()
     await pushHistory(root, study, { action: 'decision', detail: `${id}：${question.slice(0, 40)} → ${chosen.slice(0, 30)}`, phase: study.loop.phase })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
     const lines = [`✓ 已登记决策 ${id}`, `  问题：${question}`, `  选择：${chosen}`]
     if (alternatives.length) lines.push(`  否决：${alternatives.join(', ')}`)
     lines.push(`  理由：${rationale}`)
@@ -527,6 +620,7 @@ async function cmdReview(args, exec) {
     study.updatedAt = nowISO()
     await pushHistory(root, study, { action: 'review', detail: notes.join('；'), phase: study.loop.phase })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
 
     const lines = [`✓ 已登记评审 ${id}`, `  对象：${target}`, `  结论：${verdict}`]
     if (issues.length) lines.push(`  问题 ${issues.length} 条：${issues.slice(0, 3).join('；')}`)
@@ -551,10 +645,78 @@ async function cmdPhase(args, exec) {
       phase: change.to,
     })
     await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
     return [
       `✓ 阶段：${change.from} → ${change.to}${change.rewound && reason ? `（回退原因：${reason}）` : ''}`,
       `  阶段序列：${PHASES.join(' → ')}`,
     ].join('\n')
+  })
+}
+
+// ── 9. study_claim ────────────────────────────────────────────────────────
+
+async function cmdClaim(args, exec) {
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const status = optStr(args, 'status', 'unverified')
+  if (!CLAIM_STATUSES.includes(status)) throw vaultErr('ERR_BAD_ARGS', `status 必须是 ${CLAIM_STATUSES.join(' / ')}`)
+  const citekeys = Array.isArray(args.citekeys) ? args.citekeys.map(String) : []
+  const records = Array.isArray(args.records) ? args.records.map(String) : []
+  const existingId = optStr(args, 'id')
+
+  return await withFileLock(lockPath(root), {}, async () => {
+    const study = await loadStudy(root)
+    const recordsIndex = await readJson(join(root, 'research', 'records', 'index.json'), { records: [] })
+    const known = new Set((recordsIndex.records ?? []).map((r) => r.slug))
+    for (const rec of records) {
+      const slug = String(rec).split('@')[0]
+      if (!known.has(slug)) throw vaultErr('ERR_NOT_FOUND', `工件不存在：${rec}（用 record_save 先保存，或 record_list 查看）`)
+    }
+    const warnings = await checkCitekeys(root, citekeys)
+
+    if (existingId) {
+      const claim = study.claims.find((c) => c.id === existingId)
+      if (!claim) throw vaultErr('ERR_NOT_FOUND', `没有论断 ${existingId}`)
+      claim.status = status
+      if (optStr(args, 'text')) claim.text = optStr(args, 'text')
+      for (const key of citekeys) if (!(claim.evidence.citekeys ?? []).includes(key)) (claim.evidence.citekeys ??= []).push(key)
+      for (const rec of records) if (!(claim.evidence.records ?? []).includes(rec)) (claim.evidence.records ??= []).push(rec)
+      claim.history ??= []
+      claim.history.push({ at: nowISO(), to: status, via: 'study_claim' })
+      study.updatedAt = nowISO()
+      await pushHistory(root, study, { action: 'claim', detail: `更新论断 ${existingId} → ${status}`, phase: study.loop.phase })
+      await writeJsonAtomic(studyPath(root), study)
+      await writeIndex(root, study)
+      const lines = [`✓ 已更新论断 ${existingId} → ${status}`, `  ${claim.text}`]
+      if (!(claim.evidence.citekeys ?? []).length && !(claim.evidence.records ?? []).length) {
+        lines.push('  ⚠ 该论断目前没有任何证据')
+      }
+      for (const w of warnings) lines.push(`  ⚠ ${w}`)
+      return lines.join('\n')
+    }
+
+    const text = requireStr(args, 'text')
+    const id = nextId(study.claims, 'C')
+    const claim = {
+      id,
+      text,
+      location: optStr(args, 'location') || undefined,
+      evidence: { citekeys, records },
+      status,
+      createdAt: nowISO(),
+      history: [{ at: nowISO(), to: status, via: 'study_claim' }],
+    }
+    study.claims.push(claim)
+    study.updatedAt = nowISO()
+    await pushHistory(root, study, { action: 'claim', detail: `新增论断 ${id}（${status}）`, phase: study.loop.phase })
+    await writeJsonAtomic(studyPath(root), study)
+    await writeIndex(root, study)
+
+    const lines = [`✓ 已登记论断 ${id}（${status}）`, `  ${text}`]
+    if (citekeys.length) lines.push(`  文献证据：${citekeys.join(', ')}`)
+    if (records.length) lines.push(`  工件证据：${records.join(', ')}`)
+    if (!citekeys.length && !records.length) lines.push('  ⚠ 没有证据——这类论断会被 cite-check --deep 列出来')
+    for (const w of warnings) lines.push(`  ⚠ ${w}`)
+    return lines.join('\n')
   })
 }
 
@@ -722,6 +884,31 @@ export function apply(ctx) {
 
   ctx.tools.register(
     tool({
+      name: 'study_claim',
+      description:
+        '把一句论断绑定到它的证据（文献 citekey + 工件）：写入 study.json 的 claims 并给出证据覆盖率。' +
+        '给 id 则更新已有论断的状态（unverified/supported/contradicted）。' +
+        '这是「论文里每句话都能追到结果」的落点；无证据的论断会被 cite-check --deep 列出。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ...ROOT_PROP,
+          text: { type: 'string', description: '论断原文（要写进论文/笔记的那句）' },
+          citekeys: { type: 'array', items: { type: 'string' }, description: '支撑它的文献' },
+          records: { type: 'array', items: { type: 'string' }, description: '支撑它的工件（如 rmse@v1）' },
+          status: { type: 'string', enum: CLAIM_STATUSES, description: '默认 unverified' },
+          location: { type: 'string', description: '出现在哪里（章节/文件名），可选' },
+          id: { type: 'string', description: '给 id 则更新已有论断' },
+        },
+      },
+      presentTitle: '登记论断',
+      execute: cmdClaim,
+    }),
+  )
+
+  ctx.tools.register(
+    tool({
       name: 'study_phase',
       description:
         '推进研究阶段：literature → hypothesis → experiment → analysis → manuscript → concluded。' +
@@ -742,4 +929,4 @@ export function apply(ctx) {
   )
 }
 
-export const __test__ = { cmdInit, cmdState, cmdHypothesis, cmdExperiment, cmdFinding, cmdDecision, cmdReview, cmdPhase }
+export const __test__ = { cmdInit, cmdState, cmdHypothesis, cmdExperiment, cmdFinding, cmdDecision, cmdReview, cmdPhase, cmdClaim, writeIndex }

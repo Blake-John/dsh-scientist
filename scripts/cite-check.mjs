@@ -9,7 +9,10 @@
  *   4. 报告"bib 里有但正文没引用"（仅警告，可能是待引）。
  *
  * 用法：
- *   node scripts/cite-check.mjs [--root <项目根>] [--no-network] [--json] [--max-lookups 50]
+ *   node scripts/cite-check.mjs [--root <项目根>] [--no-network] [--json] [--max-lookups 50] [--deep]
+ *
+ * --deep：额外检查研究记录链路——研究假设/决策/论断/工件所引用的 citekey 是否在文献库中，
+ *         以及实验↔工件↔评审的内部引用是否悬空，并报告证据覆盖率。
  *
  * 退出码：0 无错误（可有警告）；1 有错误；2 用法/IO 错误。
  */
@@ -39,6 +42,7 @@ const ROOT = resolve(String(flag('root', process.cwd())))
 const NO_NETWORK = Boolean(flag('no-network', false))
 const JSON_OUT = Boolean(flag('json', false))
 const MAX_LOOKUPS = Number(flag('max-lookups', 50))
+const DEEP = Boolean(flag('deep', false))
 
 const errors = []
 const warnings = []
@@ -287,6 +291,116 @@ const main = async () => {
     warnings.push('未发现 key 式引用（[@key] / \\cite{key}）：若报告用编号制引用，本检查只能覆盖 bib 完整性')
   } else {
     for (const key of seen) if (!cited.has(key)) warnings.push(`${key}: bib 里有但正文未引用`)
+  }
+
+  // ── --deep：研究记录全链校验 ─────────────────────────────────────────────
+  if (DEEP) {
+    const readJsonSafe = async (file) => {
+      try {
+        return JSON.parse(await readFile(file, 'utf8'))
+      } catch {
+        return null
+      }
+    }
+    // 文献库里登记过的 key 也算已知（不强制维护 bib）
+    const notesKeys = new Set()
+    const notesDir = join(ROOT, 'literature', 'notes')
+    try {
+      for (const entry of await readdir(notesDir)) {
+        if (entry.endsWith('.md')) notesKeys.add(entry.slice(0, -3))
+      }
+    } catch {
+      /* 没有文献库就跳过 */
+    }
+    const known = new Set([...seen, ...notesKeys])
+    const isKnown = (key) => known.has(key)
+
+    const study = await readJsonSafe(join(ROOT, 'research', 'study.json'))
+    const recordsIndex = (await readJsonSafe(join(ROOT, 'research', 'records', 'index.json'))) ?? { records: [] }
+    const recordSlugs = new Set((recordsIndex.records ?? []).map((r) => r.slug))
+
+    if (!study) {
+      warnings.push('未发现 research/study.json：--deep 的研究链路检查未执行')
+    } else {
+      const hyps = study.hypotheses ?? []
+      const exps = study.experiments ?? []
+      const decs = study.decisions ?? []
+      const claims = study.claims ?? []
+      const reviews = study.reviews ?? []
+      const hypIds = new Set(hyps.map((h) => h.id))
+      const expIds = new Set(exps.map((e) => e.id))
+      const reviewIds = new Set(reviews.map((r) => r.id))
+
+      const unknownKeys = new Map()
+      const noteKey = (key, where) => {
+        if (!isKnown(key)) {
+          if (!unknownKeys.has(key)) unknownKeys.set(key, [])
+          unknownKeys.get(key).push(where)
+        }
+      }
+      for (const h of hyps) for (const key of h.citekeys ?? []) noteKey(key, `假设 ${h.id}`)
+      for (const d of decs) for (const key of d.citekeys ?? []) noteKey(key, `决策 ${d.id}`)
+      for (const c of claims) for (const key of c.evidence?.citekeys ?? []) noteKey(key, `论断 ${c.id}`)
+
+      // 工件侧：链接的 citekey 与实验
+      let manifests = 0
+      let recordDangling = 0
+      try {
+        for (const slug of recordSlugs) {
+          const dir = join(ROOT, 'research', 'records', slug)
+          for (const entry of await readdir(dir)) {
+            if (!/^v\d+$/.test(entry)) continue
+            const manifest = await readJsonSafe(join(dir, entry, 'manifest.json'))
+            if (!manifest) continue
+            manifests += 1
+            for (const key of manifest.links?.citekeys ?? []) noteKey(key, `工件 ${slug}@${entry}`)
+            if (manifest.links?.experiment && !expIds.has(manifest.links.experiment)) {
+              errors.push(`工件 ${slug}@${entry} 关联的实验 ${manifest.links.experiment} 不存在`)
+              recordDangling += 1
+            }
+            if (manifest.links?.hypothesis && !hypIds.has(manifest.links.hypothesis)) {
+              errors.push(`工件 ${slug}@${entry} 关联的假设 ${manifest.links.hypothesis} 不存在`)
+              recordDangling += 1
+            }
+          }
+        }
+      } catch (error) {
+        warnings.push(`扫描工件清单失败：${error.message}`)
+      }
+
+      // 内部引用悬空（这些是硬错误：指向不存在的东西）
+      for (const exp of exps) {
+        if (exp.hypothesis && !hypIds.has(exp.hypothesis)) errors.push(`实验 ${exp.id} 关联的假设 ${exp.hypothesis} 不存在`)
+        for (const rec of exp.records ?? []) {
+          if (!recordSlugs.has(String(rec).split('@')[0])) errors.push(`实验 ${exp.id} 指向不存在的工件 ${rec}`)
+        }
+      }
+      for (const h of hyps) {
+        for (const eid of h.experiments ?? []) if (!expIds.has(eid)) errors.push(`假设 ${h.id} 指向不存在的实验 ${eid}`)
+        for (const rid of h.reviews ?? []) if (!reviewIds.has(rid)) errors.push(`假设 ${h.id} 指向不存在的评审 ${rid}`)
+      }
+
+      for (const [key, where] of unknownKeys) {
+        warnings.push(`citekey 不在文献库中: ${key}（被 ${where.slice(0, 3).join('、')}${where.length > 3 ? ' 等' : ''} 引用）`)
+      }
+
+      // 证据覆盖率（软提醒：不阻断，只报告）
+      const noCiteHyps = hyps.filter((h) => !(h.citekeys ?? []).length)
+      const noEvidenceClaims = claims.filter((c) => !(c.evidence?.citekeys ?? []).length && !(c.evidence?.records ?? []).length)
+      const unverifiedClaims = claims.filter((c) => c.status === 'unverified')
+      const noRecordExps = exps.filter((e) => !(e.records ?? []).length)
+
+      infos.push(
+        `研究链路: 假设 ${hyps.length} · 实验 ${exps.length} · 决策 ${decs.length} · 论断 ${claims.length} · 评审 ${reviews.length} · 工件清单 ${manifests}`,
+      )
+      infos.push(
+        `证据覆盖: 假设有文献 ${hyps.length - noCiteHyps.length}/${hyps.length} · 论断有证据 ${claims.length - noEvidenceClaims.length}/${claims.length} · 实验有工件 ${exps.length - noRecordExps.length}/${exps.length}`,
+      )
+      if (noCiteHyps.length) warnings.push(`无文献支撑的假设 ${noCiteHyps.length} 条: ${noCiteHyps.map((h) => h.id).join(', ')}`)
+      if (noEvidenceClaims.length) warnings.push(`无证据的论断 ${noEvidenceClaims.length} 条: ${noEvidenceClaims.map((c) => c.id).join(', ')}`)
+      if (unverifiedClaims.length) warnings.push(`未验证的论断 ${unverifiedClaims.length} 条: ${unverifiedClaims.map((c) => c.id).join(', ')}`)
+      if (noRecordExps.length) warnings.push(`尚无工件的实验 ${noRecordExps.length} 个: ${noRecordExps.map((e) => e.id).join(', ')}`)
+    }
   }
 
   // ── 输出 ────────────────────────────────────────────────────────────────

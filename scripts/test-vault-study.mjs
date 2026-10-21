@@ -23,8 +23,8 @@ const expectErr = async (fn, re, label) => {
 }
 
 // ── 结构 ──
-ok(captured.length === 8, `应注册 8 个工具，实际 ${captured.length}`)
-for (const n of ['study_init','study_state','study_hypothesis','study_experiment','study_finding','study_decision','study_review','study_phase']) {
+ok(captured.length === 9, `应注册 9 个工具，实际 ${captured.length}`)
+for (const n of ['study_init','study_state','study_hypothesis','study_experiment','study_finding','study_decision','study_review','study_phase','study_claim']) {
   ok(byName[n], `缺少 ${n}`)
 }
 
@@ -132,6 +132,34 @@ try {
   await expectErr(() => call('study_phase', { root, phase: 'experiment', reason: '想退三步' }), /一次只能回退一个阶段/, '跨级回退被拒')
   const back2 = await call('study_phase', { root, phase: 'manuscript', reason: '还要补一章' })
   ok(/manuscript/.test(back2), '逐级回退到 manuscript')
+
+  // ── claim（论断 ↔ 证据）──
+  await expectErr(() => call('study_claim', { root, text: 'x', records: ['ghost@v1'] }), /工件不存在/, '指向不存在的工件应硬拒')
+  const c1 = await call('study_claim', { root, text: 'PINN 在 100 样本内误差 <5%', citekeys: ['vaswani2017attention'], records: [] })
+  ok(/已登记论断 C1/.test(c1), `C1：${c1.slice(0, 90)}`)
+  ok(/文献证据：vaswani2017attention/.test(c1), '列出文献证据')
+  const c2 = await call('study_claim', { root, text: '无证据的断言' })
+  ok(/没有证据/.test(c2), '无证据论断给出警告')
+  const c3 = await call('study_claim', { root, text: 'x', citekeys: ['ghost2020nope'] })
+  ok(/文献库里没有 ghost2020nope/.test(c3), '论断的 citekey 也是软提醒')
+  await expectErr(() => call('study_claim', { root, text: 'x', status: 'bogus' }), /status 必须是/, '非法状态被拒')
+
+  // 更新已有论断
+  const upd = await call('study_claim', { root, id: 'C2', text: '无证据的断言', status: 'supported' })
+  ok(/已更新论断 C2 → supported/.test(upd), `更新：${upd.slice(0, 80)}`)
+  study = JSON.parse(await readFile(join(root, 'research/study.json'), 'utf8'))
+  ok(study.claims.find(c => c.id === 'C2').status === 'supported', '论断状态已更新')
+  ok(study.claims.find(c => c.id === 'C2').history.length === 2, '论断历史累积')
+  await expectErr(() => call('study_claim', { root, id: 'C99', status: 'supported' }), /没有论断 C99/, '更新不存在的论断应报错')
+
+  // ── INDEX.md（N6）──
+  const idx = await readFile(join(root, 'research/INDEX.md'), 'utf8')
+  ok(/# PINN 求解器/.test(idx), 'INDEX 含标题')
+  ok(/## 假设/.test(idx) && /## 实验/.test(idx) && /## 决策/.test(idx), 'INDEX 含各分区')
+  ok(/## 论断与证据/.test(idx), 'INDEX 含论断分区')
+  ok(/R01/.test(idx), 'INDEX 含评审')
+  ok(/⚠ 无/.test(idx), 'INDEX 标出无证据项')
+  ok(/H1/.test(idx) && /E01/.test(idx), 'INDEX 含假设与实验编号')
 
   // ── state ──
   const st = await call('study_state', { root })
