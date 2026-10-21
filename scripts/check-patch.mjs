@@ -31,6 +31,20 @@ if (!/^\s{8,}prefix:\s*[|>]/m.test(rawPatch)) {
   process.exit(1)
 }
 
+// 历史 bug：人格里写了 {{cwd}}，而宿主只注册了 provider / model
+// （packages/core/agent-loop/src/index.ts:389-390）→ 运行时整轮失败：
+//   unknown prompt variable "{{cwd}}" in section deployment:persona-prefix
+// 这类错误静态 YAML 校验看不出来，必须在打包前比对已注册变量集合。
+const REGISTERED_PROMPT_VARS = new Set(['provider', 'model'])
+const promptVars = [...rawPatch.matchAll(/\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/g)].map((m) => m[1])
+const unknownVars = [...new Set(promptVars.filter((v) => !REGISTERED_PROMPT_VARS.has(v)))]
+if (unknownVars.length) {
+  console.error(`✗ 人格文本使用了未注册的 prompt 变量：${unknownVars.map((v) => `{{${v}}}`).join(', ')}`)
+  console.error(`  宿主只注册：${[...REGISTERED_PROMPT_VARS].join(', ')}——其余名字会让整轮运行直接失败。`)
+  console.error('  修法：改成普通文字（如「当前会话工作区」），或改用已注册变量。')
+  process.exit(1)
+}
+
 const includeEntry = join(checkout, 'vendor/include/lib/index.js')
 if (!existsSync(includeEntry)) {
   console.log(`⚠ 找不到 DSH checkout（${checkout}），跳过本项校验。`)
