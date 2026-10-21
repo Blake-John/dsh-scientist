@@ -44,11 +44,11 @@ Loader.add_constructor("tag:yaml.org,2002:js", _js_tag)
 
 
 def package_names() -> set[str]:
-    """Names the loader could resolve, derived from the checkout.
+    """Names the loader could resolve, derived from package manifests in the checkout.
 
-    The checkout ships built packages (some without package.json), so a name is
-    accepted when either the manifest declares it or a package directory of that
-    name exists under packages/ or apps/.
+    A directory without package.json is NOT loadable by name — Node resolution
+    needs the manifest. Deriving names from directory names produced false
+    positives that only surfaced at mount time.
     """
     names: set[str] = set()
     roots = list(CHECKOUT.glob("packages/**/package.json")) + list(
@@ -61,14 +61,10 @@ def package_names() -> set[str]:
             continue
         if isinstance(data.get("name"), str):
             names.add(data["name"])
-    for directory in list(CHECKOUT.glob("packages/**/")) + list(CHECKOUT.glob("apps/**/")):
-        if not directory.is_dir():
-            continue
-        leaf = directory.name
-        if leaf in {"lib", "node_modules", "src", "tests", "test", "dist"}:
-            continue
-        names.add(f"@deepseek-ai/{leaf}")
-        names.add(f"@deepseek-ai/dsh-{leaf}")
+    # 不再按目录名兜底推导包名。
+    # 教训：workflow-worker-thread 目录只有 lib/ 没有 package.json，
+    # 加载器按 Node 解析当然找不到它，但"目录存在"却让旧逻辑放行，
+    # 结果挂载时才报 "never started"。只有带清单的包才算可解析。
     return names
 
 

@@ -133,7 +133,8 @@ function auditConfigs(list, checkoutRoot, problems) {
         for (const file of readdirSync(srcDir)) {
           if (!file.endsWith('.ts')) continue
           const full = join(srcDir, file)
-          if (readFileSync(full, 'utf8').includes('const Config')) {
+          const src = readFileSync(full, 'utf8')
+          if (src.includes('Config') && src.includes('z.object')) {
             nameToSrc.set(pkg.name, full)
             break
           }
@@ -175,7 +176,7 @@ function auditConfigs(list, checkoutRoot, problems) {
       continue
     }
     const text = readFileSync(srcPath, 'utf8')
-    const start = text.indexOf('const Config')
+    const start = Math.max(text.indexOf('const Config'), text.indexOf('static Config'))
     const body = start >= 0 ? /z\.object\(\{([\s\S]*?)\n\}\)/.exec(text.slice(start, start + 4000)) : null
     if (!body) continue
     const allowed = new Set([...body[1].matchAll(/^\s{2}([a-zA-Z]\w*)\s*:/gm)].map((m) => m[1]))
@@ -189,6 +190,57 @@ function auditConfigs(list, checkoutRoot, problems) {
   return checked
 }
 
+
+// ── 包名必须来自宿主已发布的组合 ────────────────────────────────────────────
+// 曾经踩过的坑：workflow 行写成了 @deepseek-ai/dsh-workflow-worker-thread，
+// 该目录只有 lib/ 没有 package.json，加载器解析不到，挂载时报 "never started"。
+// 这里把我们的 @deepseek-ai/* 行名与宿主 standard/base 组合比对。
+function auditShippedNames(list, checkoutRoot, problems) {
+  const flatten = (node, out = []) => {
+    if (Array.isArray(node)) {
+      for (const item of node) flatten(item, out)
+      return out
+    }
+    if (!node || typeof node !== 'object') return out
+    if (typeof node.name === 'string') out.push(node)
+    for (const key of ['insert', 'override', 'config', 'group', 'plugins']) {
+      if (node[key]) flatten(node[key], out)
+    }
+    return out
+  }
+
+  const shipped = new Set()
+  const sources = [
+    join(checkoutRoot, 'packages/bundle/web-app/presets/standard.patch.yml'),
+    join(checkoutRoot, 'packages/bundle/base/cordis.patch.yml'),
+  ]
+  let loaded = 0
+  for (const file of sources) {
+    if (!existsSync(file)) continue
+    try {
+      for (const row of flatten(yaml.load(readFileSync(file, 'utf8'), { schema: entryListSchema }))) {
+        shipped.add(row.name)
+      }
+      loaded += 1
+    } catch {
+      /* 宿主文件结构变化时跳过 */
+    }
+  }
+  if (!loaded || !shipped.size) {
+    problems.push('无法读取宿主已发布的组合，跳过包名白名单比对')
+    return 0
+  }
+
+  const ours = new Set(flatten(list).map((row) => row.name))
+  const unknown = [...ours].filter((name) => name.startsWith('@deepseek-ai/') && !shipped.has(name))
+  if (unknown.length) {
+    problems.push(`以下包名在宿主已发布的组合中从未出现（很可能写错或不可挂载）：${unknown.join(', ')}`)
+  }
+  return shipped.size
+}
+
+const shippedCount = auditShippedNames(plugins, checkout, problems)
+if (shippedCount) console.log(`  宿主已发布行名: ${shippedCount}`)
 const audited = auditConfigs(plugins, checkout, problems)
 if (audited) console.log(`  config 字段审计: ${audited} 行`)
 console.log(`patch: ${patchPath}`)

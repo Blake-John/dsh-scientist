@@ -277,17 +277,19 @@
                 config:
                   provider: spawn
                   toolName: subagent
-                  backgroundMode: continuable
+                  modelSelectionSettings: true
 
               - id: tool-subagent-fork
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
                   provider: fork
                   toolName: subagent_fork
-                  backgroundMode: continuable
 
-              - id: workflow-worker-thread
-                name: '@deepseek-ai/dsh-workflow-worker-thread'
+              # workflow 引擎：宿主 standard preset 用的是 workflow-ptc。
+              # 早先误写成 @deepseek-ai/dsh-workflow-worker-thread —— 那个目录只有 lib/，
+              # 没有 package.json，加载器无法解析，挂载时报 "never started"。
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
                 config:
                   provider: spawn
 
