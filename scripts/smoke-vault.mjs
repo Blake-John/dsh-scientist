@@ -90,8 +90,52 @@ console.log('')
 console.log(`定义体量：描述 ${bytes} 字符 + 参数 ${paramBytes} 字符 ≈ ${tokens} tokens/请求常驻`)
 console.log(`对照：dsh-science 31 个工具 ≈ 1941 tokens（本包 12 个）`)
 
+// ── 命令与强制层：同样按包名解析并真跑 apply() ──
+const commands = []
+const hooks = {}
+const guards = []
+const fakeCtx = {
+  inject: (_deps, cb) => cb({ commands: { register: (def) => { commands.push(def); return () => {} } } }),
+  on: (event, handler) => { hooks[event] = handler; return () => {} },
+  tools: { guard: (fn) => { guards.push(fn); return () => {} }, register: () => () => {} },
+  get: (name) => (name === 'sessions' ? { get: () => ({ cwd: process.cwd() }) } : undefined),
+}
+
+for (const [specifier, label] of [
+  ['dsh-scientist/vault-commands.mjs', 'vault-commands'],
+  ['dsh-scientist/vault-enforce.mjs', 'vault-enforce'],
+]) {
+  let mod
+  try {
+    mod = await import(specifier)
+  } catch (error) {
+    problems.push(`${label}: 无法按包名解析（${error.code ?? error.message}）`)
+    continue
+  }
+  ok(typeof mod.apply === 'function', `${label}: 没有导出 apply`)
+  try {
+    mod.apply(fakeCtx)
+  } catch (error) {
+    problems.push(`${label}: apply() 抛错 —— ${error.message}`)
+  }
+}
+
+const commandNames = commands.map((d) => d.name).sort()
+ok(commands.length === 7, `应注册 7 个斜杠命令，实际 ${commands.length}：${commandNames.join(', ')}`)
+for (const expected of ['derive', 'paper', 'review', 'status', 'study-init', 'survey', 'write']) {
+  ok(commandNames.includes(expected), `缺少 /${expected}`)
+}
+ok(typeof hooks['agent/pre-step'] === 'function', '强制层缺 pre-step')
+ok(typeof hooks['agent/turn-stopping'] === 'function', '强制层缺 turn-stopping')
+ok(guards.length === 1, `强制层应有 1 个 guard，实际 ${guards.length}`)
+
+console.log('')
+console.log('斜杠命令：')
+console.log('  ' + commandNames.map((n) => `/${n}`).join('  '))
+console.log('强制钩子：agent/pre-step · agent/turn-stopping · tools/guard')
+
 if (problems.length) {
   console.error('\n✗ 失败项:\n  - ' + problems.join('\n  - '))
   process.exit(1)
 }
-console.log('\n✓ 挂载冒烟通过（4 个模块按包名解析、apply() 全部成功、18 个工具无重名）')
+console.log('\n✓ 挂载冒烟通过（6 个模块按包名解析、apply() 全部成功、18 工具 + 7 命令 + 3 钩子）')

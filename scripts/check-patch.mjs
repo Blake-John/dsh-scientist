@@ -106,7 +106,12 @@ if (!litRow) problems.push('缺少 lit-tools 行')
 else if (litRow.name !== 'dsh-scientist/lit-tools.mjs') problems.push(`lit-tools 的 name = ${litRow.name}`)
 
 // 科研记录两组工具（P4 加入）
-for (const [id, file] of [['vault-record', 'vault-record.mjs'], ['vault-study', 'vault-study.mjs']]) {
+for (const [id, file] of [
+  ['vault-record', 'vault-record.mjs'],
+  ['vault-study', 'vault-study.mjs'],
+  ['vault-commands', 'vault-commands.mjs'],
+  ['vault-enforce', 'vault-enforce.mjs'],
+]) {
   const row = plugins.find((p) => p.id === id)
   if (!row) problems.push(`缺少 ${id} 行`)
   else if (row.name !== `dsh-scientist/${file}`) problems.push(`${id} 的 name = ${row.name}`)

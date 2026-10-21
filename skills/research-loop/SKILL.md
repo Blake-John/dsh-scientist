@@ -43,3 +43,21 @@ study_experiment → 创建 E01
 study_finding (finding + conclusion + nextQuestion)
 study_phase → 推进阶段
 ```
+
+
+## 斜杠命令入口（约定 loop）
+
+用户可以用命令直接进入一条约定好的闭环，而不是靠对话描述：
+
+| 命令 | 闭环 |
+|---|---|
+| `/study-init` | 建/更新项目（标题 + 核心问题） |
+| `/survey <方向>` | 调研 → `reports/landscape-<slug>.md` |
+| `/paper <DOI\|id\|标题>` | 精读 → `literature/notes/<citekey>.md` + bib |
+| `/derive <命题>` | 推导/论证 → `derivations/<id>/` |
+| `/write [目标]` | 成文 → 目标文件 + cite-check |
+| `/review [对象]` | 评审 → `study_review` |
+| `/status` | 进度 / 新会话接手 |
+
+命令会把出口契约写进指令；在有 loop 期间，未完成会被阻止收尾。
+没有 loop 时按本技能的自由循环推进即可。

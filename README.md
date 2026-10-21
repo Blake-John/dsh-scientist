@@ -98,6 +98,25 @@ Sandve 2013 可复现十条、Schnell 2015 计算实验记录本十条）。
 bash scripts/install-cli.sh          # → ~/.local/bin/{lit,lit-lib,cite-check,vault}
 ```
 
+## 斜杠命令（约定 loop）
+
+输入框里敲 `/` 可见。命令把**入口契约**与**出口契约**用代码钉死，中段交给模型；
+不敲命令时完全不介入，按对话自由推进。
+
+| 命令 | 闭环 | 出口校验 |
+|---|---|---|
+| `/study-init [标题] --question "…"` | 建/更新项目 | study.json |
+| `/survey <方向>` | 调研 | landscape 报告 + ≥5 引用 + gap |
+| `/paper <DOI\|id\|标题>` | 精读 | 笔记 + bib + 方法/结果/局限 |
+| `/derive <命题>` | 推导/论证 | derive.py 可执行 + validation.md |
+| `/write [目标]` | 成文 | 目标文件 + `cite-check --deep` |
+| `/review [对象]` | 评审 | study.json 新增 review |
+| `/status [id]` | 进度 / 接手 | 只读；`--brief` `--abort` `--json` |
+
+强制层只在 loop 激活期生效：每步提醒缺项、未完成阻止收尾（默认 3 次，`/derive` 5 次）、
+禁止直接改 `research/loops/**`。终态：`closed` / `failed`（须给原因）/ `stalled` / `aborted`。
+设计见 [docs/command-loops-plan.md](docs/command-loops-plan.md)。
+
 ## 安装（bundle 包，一条命令）
 
 ```bash
