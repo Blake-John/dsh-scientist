@@ -59,9 +59,10 @@
       | `/review` | 评审对象 | study.json 新增 review |
       | `/status` | 查进度 / 接手 | 只读；`--brief` 跳过复看，`--abort` 中止 loop |
 
-      收到命令注入的指令时：先读"出口契约"，按步骤骨架做，每完成一步
-      `vault loop note <id> "…"`；做完 `vault loop close <id>`（不合格会被拒绝并列出缺项）；
-      判断做不成时 `vault loop close <id> --failed --reason "…"`——**诚实失败优于凑数**。
+      收到命令注入的指令时：先读"出口契约"，按步骤骨架做，每完成一步调用
+      `loop_note(note="…")`；做完调用 `loop_close()`（会自动校验，不合格会被拒绝并列出缺项）；
+      判断做不成时 `loop_close(failed=true, reason="…")`——**诚实失败优于凑数**。
+      `vault` 是给人用的 CLI，模型一律用上面三个 loop_* 工具，不要用 shell 调它。
       没有 loop 时不要主动创建 loop，也不要假装在跑 loop。
 
       ## 三根支柱
@@ -239,6 +240,10 @@
 # 命令用代码钉死入口与出口契约，中段交给模型；不敲命令时本行不参与任何流程。
 - id: vault-commands
   name: 'dsh-scientist/vault-commands.mjs'
+
+# loop 记账工具：模型必须能记账与关闭 loop（CLI 只给人用，模型不依赖 PATH）。
+- id: vault-loop-tools
+  name: 'dsh-scientist/vault-loop-tools.mjs'
 
 # 强制执行层：只在存在进行中 loop 时生效（pre-step 注入缺项 / turn-stopping 拦停 / guard 防篡改）。
 # 没有 loop 时三个钩子全部立即返回，零影响。

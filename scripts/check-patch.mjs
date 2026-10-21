@@ -110,6 +110,7 @@ for (const [id, file] of [
   ['vault-record', 'vault-record.mjs'],
   ['vault-study', 'vault-study.mjs'],
   ['vault-commands', 'vault-commands.mjs'],
+  ['vault-loop-tools', 'vault-loop-tools.mjs'],
   ['vault-enforce', 'vault-enforce.mjs'],
 ]) {
   const row = plugins.find((p) => p.id === id)

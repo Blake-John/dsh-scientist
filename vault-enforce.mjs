@@ -55,7 +55,7 @@ export function nudgeText(loop) {
   } else {
     lines.push('还差：出口契约尚未校验通过（产物或 work 记录不足）')
   }
-  lines.push(`继续完成，或判断做不成时执行：vault loop close ${loop.id} --failed --reason "…"`)
+  lines.push('继续完成；判断做不成时调用 loop_close(failed=true, reason="…")')
   return lines.join('\n')
 }
 
@@ -65,7 +65,7 @@ export function reminderText(loop) {
   return [
     `（loop ${loop.id} 出口契约未满足）`,
     ...failures.map((item) => `· ${item}`),
-    `完成后执行：vault loop close ${loop.id}`,
+    '完成后调用 loop_close()',
   ].join('\n')
 }
 

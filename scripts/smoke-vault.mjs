@@ -15,6 +15,7 @@ const ok = (cond, msg) => {
 const ROWS = [
   ['dsh-scientist/vault-record.mjs', 'vault-record'],
   ['dsh-scientist/vault-study.mjs', 'vault-study'],
+  ['dsh-scientist/vault-loop-tools.mjs', 'vault-loop-tools'],
   ['dsh-scientist/lit-tools.mjs', 'lit-tools'],
   ['dsh-scientist/pdf-tools.mjs', 'pdf-tools'],
 ]
@@ -69,8 +70,8 @@ for (const [specifier, label] of ROWS) {
 }
 
 const total = registered.length
-const EXPECTED = { 'vault-record': 3, 'vault-study': 9, 'lit-tools': 4, 'pdf-tools': 2 }
-ok(total === 18, `应注册 18 个工具（3+9+4+2），实际 ${total}`)
+const EXPECTED = { 'vault-record': 3, 'vault-study': 9, 'vault-loop-tools': 3, 'lit-tools': 4, 'pdf-tools': 2 }
+ok(total === 21, `应注册 21 个工具（3+9+3+4+2），实际 ${total}`)
 for (const [label, want] of Object.entries(EXPECTED)) {
   ok(byRow[label] === want, `${label} 应注册 ${want} 个，实际 ${byRow[label]}`)
 }
@@ -138,4 +139,4 @@ if (problems.length) {
   console.error('\n✗ 失败项:\n  - ' + problems.join('\n  - '))
   process.exit(1)
 }
-console.log('\n✓ 挂载冒烟通过（6 个模块按包名解析、apply() 全部成功、18 工具 + 7 命令 + 3 钩子）')
+console.log('\n✓ 挂载冒烟通过（7 个模块按包名解析、apply() 全部成功、21 工具 + 7 命令 + 3 钩子）')

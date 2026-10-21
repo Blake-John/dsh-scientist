@@ -205,7 +205,7 @@ export function buildPrompt(spec, plan, loopId, arg) {
   lines.push('## 出口契约（不满足不能关闭）')
   lines.push(`- 产物：${plan.artifacts.join('、')}`)
   if (plan.mustContain?.length) lines.push(`- 必须含：${plan.mustContain.join('；')}`)
-  lines.push(`- 校验：vault loop close ${loopId} 会自动执行${plan.requires.length || plan.checks.length ? '' : '（无自动校验项）'}`)
+  lines.push(`- 校验：loop_close() 会自动执行${plan.requires.length || plan.checks.length ? '' : '（无自动校验项）'}`)
   if (plan.workMin > 0) lines.push(`- 过程留痕：work ≥${plan.workMin} 条`)
   lines.push('')
   lines.push('## 步骤骨架（怎么做由你决定）')
@@ -215,10 +215,10 @@ export function buildPrompt(spec, plan, loopId, arg) {
     lines.push(`方法细节：先加载 \`${spec.skill}\` 技能。`)
   }
   lines.push('')
-  lines.push('## 记账')
-  lines.push(`- 每完成一步：\`vault loop note ${loopId} "…"\``)
-  lines.push(`- 全部完成：\`vault loop close ${loopId}\`（自动校验；不合格会被拒绝并列出缺项）`)
-  lines.push(`- 判断做不成：\`vault loop close ${loopId} --failed --reason "…"\`（诚实失败优于凑数）`)
+  lines.push('## 记账（用工具，不要用 shell）')
+  lines.push(`- 每完成一步：loop_note(note="…")`)
+  lines.push(`- 全部完成：loop_close()`)
+  lines.push(`- 判断做不成：loop_close(failed=true, reason="…")（诚实失败优于凑数）`)
   return lines.join('\n')
 }
 
@@ -369,6 +369,14 @@ export function apply(ctx) {
           autoCreated: false,
           origin: '/study-init',
         })
+        // 注入一句确认，让用户看到助手回应（否则只有一个不显眼的命令节点）
+        invocation.agent.followup(
+          userMessage(
+            created
+              ? `（/study-init 已完成）研究「${study.title}」已建立，清单在 research/study.json。用一句话向用户确认，并建议下一步（/survey <方向> 或 study_hypothesis）。不要重复清单内容。`
+              : `（/study-init 已更新）标题「${study.title}」，核心问题：${study.question?.text || '（未设）'}。用一句话确认。`,
+          ),
+        )
         return {
           kind: 'success',
           text: created

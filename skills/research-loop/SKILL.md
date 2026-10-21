@@ -60,4 +60,5 @@ study_phase → 推进阶段
 | `/status` | 进度 / 新会话接手 |
 
 命令会把出口契约写进指令；在有 loop 期间，未完成会被阻止收尾。
+记账用 `loop_note`，关闭用 `loop_close`（失败声明 `failed=true, reason=…`）。
 没有 loop 时按本技能的自由循环推进即可。

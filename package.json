@@ -31,7 +31,8 @@
     "./vault-study.mjs": "./vault-study.mjs",
     "./package.json": "./package.json",
     "./vault-commands.mjs": "./vault-commands.mjs",
-    "./vault-enforce.mjs": "./vault-enforce.mjs"
+    "./vault-enforce.mjs": "./vault-enforce.mjs",
+    "./vault-loop-tools.mjs": "./vault-loop-tools.mjs"
   },
   "files": [
     "LICENSE",
@@ -51,6 +52,7 @@
     "vault-core.mjs",
     "vault-enforce.mjs",
     "vault-loop-core.mjs",
+    "vault-loop-tools.mjs",
     "vault-record.mjs",
     "vault-study.mjs"
   ],

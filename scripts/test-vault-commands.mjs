@@ -80,8 +80,9 @@ try {
   ok(/## 出口契约/.test(prompt), 'prompt 含出口契约')
   ok(/## 步骤骨架/.test(prompt), 'prompt 含步骤骨架')
   ok(/domain-survey/.test(prompt), 'prompt 引用技能')
-  ok(new RegExp(`vault loop close ${loops[0].id}`).test(prompt), 'prompt 含 close 指令')
-  ok(/--failed --reason/.test(prompt), 'prompt 含诚实失败出口')
+  ok(/loop_close\(\)/.test(prompt), 'prompt 含 loop_close 指令')
+  ok(/failed=true, reason=/.test(prompt), 'prompt 含诚实失败出口')
+  ok(/loop_note\(/.test(prompt), 'prompt 含 loop_note 记账')
   ok(followups[0].role === 'user' && typeof followups[0].id === 'string', '消息形状符合 MessageBase')
 
   // ── 同类互斥 ──
