@@ -45,6 +45,7 @@
     "scripts/vault.mjs",
     "skills",
     "skills-provider.mjs",
+    "vault-commands.mjs",
     "vault-core.mjs",
     "vault-loop-core.mjs",
     "vault-record.mjs",

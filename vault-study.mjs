@@ -237,6 +237,50 @@ async function writeIndex(root, study) {
   await writeFile(join(root, 'research', 'INDEX.md'), renderIndex(study, recordsIndex), 'utf8')
 }
 
+/**
+ * 供命令层复用：不存在则建（可标记 autoCreated/origin），存在则可更新 title/question。
+ * 与 study_init 工具共用同一份 schema，避免两套初始化逻辑漂移。
+ */
+export async function ensureStudy(root, { title, question, autoCreated = false, origin, update = false } = {}) {
+  return await withFileLock(lockPath(root), {}, async () => {
+    const existing = await readJson(studyPath(root), null)
+    if (existing) {
+      if (update && (title || question)) {
+        if (title) existing.title = title
+        if (question) {
+          existing.question ??= { text: '', history: [] }
+          existing.question.text = question
+          existing.question.updatedAt = nowISO()
+        }
+        existing.updatedAt = nowISO()
+        await writeJsonAtomic(studyPath(root), existing)
+      }
+      return { study: existing, created: false }
+    }
+    for (const dir of ['research/records', 'research/reviews', 'research/envs']) {
+      await mkdir(withinRoot(root, dir), { recursive: true })
+    }
+    const stamp = nowISO()
+    const study = {
+      schema: SCHEMA,
+      title: title || '未命名研究',
+      createdAt: stamp,
+      updatedAt: stamp,
+      autoCreated: Boolean(autoCreated),
+      origin: origin ?? undefined,
+      question: { text: question ?? '', history: [], updatedAt: stamp },
+      loop: { phase: 'literature', iteration: 1, history: [] },
+      hypotheses: [],
+      experiments: [],
+      decisions: [],
+      reviews: [],
+      claims: [],
+    }
+    await writeJsonAtomic(studyPath(root), study)
+    return { study, created: true }
+  })
+}
+
 // ── 1. study_init ───────────────────────────────────────────────────────────
 
 async function cmdInit(args, exec) {
@@ -919,4 +963,4 @@ export function apply(ctx) {
   )
 }
 
-export const __test__ = { cmdInit, cmdState, cmdHypothesis, cmdExperiment, cmdFinding, cmdDecision, cmdReview, cmdPhase, cmdClaim, writeIndex }
+export const __test__ = { ensureStudy, cmdInit, cmdState, cmdHypothesis, cmdExperiment, cmdFinding, cmdDecision, cmdReview, cmdPhase, cmdClaim, writeIndex }
