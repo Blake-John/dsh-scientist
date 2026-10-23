@@ -82,7 +82,8 @@ jobs:
         id: probe
         run: |
           VER=$(node -p "require('./package.json').version")
-          if npm view "dsh-scientist@$VER" version >/dev/null 2>&1; then
+          # --prefer-online：绕开 npm 的 packument 缓存，避免把刚发布的版本误判为不存在
+          if npm view --prefer-online "dsh-scientist@$VER" version >/dev/null 2>&1; then
             echo "已是 $VER，跳过发布"
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
@@ -115,11 +116,26 @@ jobs:
         if: steps.probe.outputs.exists != 'true'
         run: |
           VER=$(node -p "require('./package.json').version")
-          for i in 1 2 3 4 5; do
-            if npm view "dsh-scientist@$VER" version >/dev/null 2>&1; then break; fi
-            echo "registry 尚未同步，等待 6s…（$i/5）"
+          # 直接查 registry API，绕开 npm 的 packument 缓存：publish 返回后，
+          # 同一 job 里的 npm view 可能仍读到旧缓存（latest 还停在上一版），
+          # 导致"已发布却报 404"的假失败。
+          URL="https://registry.npmjs.org/dsh-scientist/$VER"
+          OK=0
+          for i in $(seq 1 10); do
+            if curl -fsS "$URL" -o /tmp/published.json; then OK=1; break; fi
+            echo "registry 尚未同步，等待 6s…（$i/10）"
             sleep 6
           done
-          echo "registry 上的 latest: $(npm view dsh-scientist version)"
-          npm view "dsh-scientist@$VER" dsh.bundle.patch
-          npm view "dsh-scientist@$VER" license
+          if [ "$OK" -ne 1 ]; then
+            echo "::error::registry 上仍找不到 dsh-scientist@$VER"
+            exit 1
+          fi
+          node -e '
+            const p = require("/tmp/published.json");
+            const fail = (m) => { console.error("::error::" + m); process.exit(1); };
+            if (!p.dsh?.bundle?.patch) fail("已发布版本缺少 dsh.bundle.patch");
+            if (p.license !== "Apache-2.0") fail("license 应为 Apache-2.0，实际 " + p.license);
+            console.log("✓ 已上线:", p.name + "@" + p.version, "| bundle patch:", p.dsh.bundle.patch, "| license:", p.license);
+          '
+          LATEST=$(curl -fsS https://registry.npmjs.org/dsh-scientist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s)["dist-tags"].latest))')
+          echo "registry 上的 latest: $LATEST"
