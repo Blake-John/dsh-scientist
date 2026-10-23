@@ -25,14 +25,14 @@ try {
   const ctx = {
     on: (event, handler) => { hooks[event] = handler; return () => {} },
     tools: { guard: (fn) => { guards.push(fn); return () => {} } },
-    get: (name) => (name === 'sessions' ? { get: (id) => ({ cwd: root }) } : undefined),
+    get: (name) => (name === 'workingDirectory' ? { ensure: async () => root } : undefined),
   }
   apply(ctx)
   ok(typeof hooks['agent/pre-step'] === 'function', '注册了 pre-step')
   ok(typeof hooks['agent/turn-stopping'] === 'function', '注册了 turn-stopping')
   ok(guards.length === 1, '注册了一个 guard')
 
-  const agent = { id: 's1', send: (msg, target, wakeup) => { sent.push({ msg, target, wakeup }) } }
+  const agent = { id: 's1', session: { header: { cwd: root } }, send: (msg, target, wakeup) => { sent.push({ msg, target, wakeup }) } }
   const sent = []
   const nextDefault = async () => ({ kind: 'enter', messages: [{ id: 'orig', role: 'user', content: [], source: { kind: 'user' } }] })
 

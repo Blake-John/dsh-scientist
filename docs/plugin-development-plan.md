@@ -1,6 +1,6 @@
 # dsh-scientist 开发规划
 
-> 版本 0.5.0 · 最后更新 2026-10-21
+> 版本 0.6.0 · 最后更新 2026-10-22
 > 本文是该插件的**总纲**：目标、功能、边界、命名、角色分工、工具与技能、用户交互、科研流程、路线图。
 
 ---
@@ -58,7 +58,7 @@
 ```
 ┌ ① 工具层（21 个）──────────────────────────────┐
 │ 模型主动调用：文献 4 · PDF 2 · 工件 3 · 研究 9 · loop 3 │
-├ ② 命令层（7 个）──────────────────────────────┤
+├ ② 命令层（12 个）──────────────────────────────┤
 │ 用户敲 /xxx：入口契约 + 出口契约 + 注入固定 prompt      │
 ├ ③ 强制层（3 个钩子，仅 loop 激活时）──────────────┤
 │ pre-step 注入契约 · turn-stopping 拦停 · guard 防篡改   │
@@ -105,7 +105,7 @@
 
 ### 5.2 命令命名
 
-小写、无前缀、不带斜杠（注册名）：`survey` `paper` `derive` `write` `review` `status` `study-init`。
+小写、无前缀、不带斜杠（注册名）：`survey` `survey-scan` `survey-scholar` `survey-map` `survey-papers` `survey-report` `paper` `derive` `write` `review` `status` `study-init`。
 用户侧写作 `/survey`。与宿主内置命令（`compact` `goal` `plan`）不冲突。
 
 ### 5.3 目录约定
@@ -117,7 +117,7 @@
 | `research/loops/<id>.json` | 约定 loop 进度 | ❌ 运行态 |
 | `research/records/<name>/v<N>/` | 工件版本（manifest.json + provenance.jsonl + files/） | ✅ 小文件 |
 | `research/reviews/<id>.md` | 评审长文 | ✅ |
-| `knowledge/surveys/<topic>/` | 调研报告（report/scope/refs/timeline） | ✅ |
+| `knowledge/surveys/<topic>/` | 分阶段调研（survey.json + scope/sources/queries/candidates/landscape/papers/report） | ✅ |
 | `knowledge/literature/notes/<citekey>.md` | 文献笔记 | ✅ |
 | `knowledge/literature/references.bib` | 书目 | ✅ |
 | `knowledge/literature/pdfs/` | 论文 PDF | ❌ 可重下/LFS |
@@ -230,19 +230,24 @@
 
 ---
 
-## 9. 命令清单（7 个）
+## 9. 命令清单（12 个）
 
 | 命令 | 参数 | 自动建项目 | 出口契约 | 拦停上限 |
 |---|---|---|---|---|
 | `/study-init` | `[标题] --question "…"` | — | study.json 有标题 | 0 |
-| `/survey` | `<方向>` | ✅ | landscape 报告（本次更新）+ ≥5 key 式引用 + gap 段 + citekey↔bib + work≥3 | 3 |
+| `/survey` | `[主题] --next --force --json` | — | 只读状态页；`--next` 执行下一阶段 | 0 |
+| `/survey-scan` | `<主题> --force` | ✅ | scope.md + sources.md；≥8 个 URL + 决策问题/边界/检索式 + work≥2 | 2 |
+| `/survey-scholar` | `<主题> --force` | ✅ | queries.md + candidates.md；≥12 citekey + bib + work≥3 | 3 |
+| `/survey-map` | `<主题> --force` | ✅ | landscape.md；≥5 引用 + 对比表 + gap + bib + work≥3 | 3 |
+| `/survey-papers` | `<主题> --force` | ✅ | papers.md；≥10 篇 + 纳入/排除 + 深读队列 + bib + work≥2 | 2 |
+| `/survey-report` | `<主题> --force` | ✅ | report.md；≥5 引用 + gap + 不确定性 + bib + work≥3 | 3 |
 | `/paper` | `<DOI\|id\|标题>` | ✅ | 笔记（本次更新）+ 核心主张/方法要点/局限三节有内容 + bib 条目 + work≥2 | 3 |
 | `/derive` | `<命题\|流程\|逻辑>` | ✅ | derive.py（本次更新）可执行 + validation.md 含验证路线 + work≥3 | **5** |
 | `/write` | `[目标]` 默认进度日志；`§N` / `--section N` 按章节 | ✅ | 目标文件（本次更新）+ `cite-check --deep` | 3 |
 | `/review` | `[对象]` 默认全部未验证项 | ✅ | 新增 study_review 记录 | 3 |
 | `/status` | `[id] --brief --json --abort` | — | 只读，不建 loop、不拦停 | **0** |
 
-通用参数：`--no-init`（禁止自动建项目）、`--dry-run`（只打印将注入的 prompt）。
+通用参数：`--root DIR`、`--no-init`（禁止自动建项目）、`--dry-run`（只打印将注入的 prompt）；调研阶段额外支持 `--force`（前序标 `skipped`）。
 
 ---
 
@@ -258,7 +263,7 @@
 
 ### 10.2 拦停策略
 
-- 默认 3 次；`/derive` 5 次；`/status` 不拦
+- 默认 2–3 次（survey 阶段 2/3）；`/derive` 5 次；`/status` 不拦
 - 超限 → 置 `stalled` 并**放行**（不无限烧 token）
 - `stalled` 后 `loop_note` 可复活（重置预算），或 `/status --abort` 中止
 
@@ -292,10 +297,10 @@
 
 ```
 用户：/study-init 航磁补偿 --question "小样本下如何提高补偿精度"
-助手：已建立研究「航磁补偿」，目录与脚手架已就绪。建议先 /survey 或登记假设。
+助手：已建立研究「航磁补偿」，目录与脚手架已就绪。建议先 /survey-scan 或登记假设。
 
-用户：/survey 航磁补偿
-助手：（创建 loop，按契约执行）…
+用户：/survey-scan 航磁补偿
+助手：（创建 scan loop，按契约执行）…
       loop_note(note="锁定 3 个流派")
       …
       loop_close()  → ✓ 已关闭
@@ -322,7 +327,7 @@
 | 阶段 | 用户动作 | agent 动作 | 产物 |
 |---|---|---|---|
 | ① 立项 | `/study-init` | 建脚手架 | `research/study.json` + 目录 |
-| ② 调研 | `/survey` | 测绘边界/流派/时间线/对比/gap | `knowledge/surveys/*/report.md` |
+| ② 调研 | `/survey-scan → scholar → map → papers → report` | 分阶段：网络调研→学术检索→流派地图→论文总述→综合报告 | `knowledge/surveys/*/survey.json` + `*.md`（scope/sources/queries/candidates/landscape/papers/report） |
 | ③ 精读 | `/paper` | 取全文→画像→分节读→笔记 | `knowledge/literature/notes/*.md` + bib |
 | ④ 立假设 | 直接说 或 `study_hypothesis` | 可证伪表述 + citekeys | `study.json` 假设 |
 | ⑤ 设计实验 | `study_experiment` | 步骤/预期/种子/环境 | `experiments/E01/` |
@@ -344,7 +349,7 @@
 |---|---|
 | 21 个工具定义 | ≈ 3,192 |
 | 15 个技能 catalog | ≈ 550 |
-| 7 个命令描述 | ≈ 300 |
+| 12 个命令描述 | ≈ 300 |
 | pre-step 注入（仅 loop 激活时） | 60–100/步 |
 
 对比：改造前 dsh-science 31 个工具 ≈ 1,941。多出的部分换来 loop 强制与论断证据链。
@@ -358,7 +363,7 @@
 | 静态 | `check-patch`：包名可解析、config 字段、prompt 变量、行→文件存在性 |
 | 单测 | 15 个测试文件、约 500 条断言 |
 | 变异测试 | 34 项：把修复改坏，测试必须变红 |
-| 挂载冒烟 | 7 个模块按包名解析 + `apply()` 真跑 → 21 工具 + 7 命令 + 3 钩子 |
+| 挂载冒烟 | 7 个模块按包名解析 + `apply()` 真跑 → 21 工具 + 12 命令 + 3 钩子 |
 | 验收 | `bash scripts/verify.sh` = 21 项 |
 | 真装 | 装包 → 重启 → 敲 `/` 看命令、问工具清单 |
 
@@ -366,7 +371,10 @@
 
 ## 15. 路线图
 
-### 已完成（0.2.x → 0.5.0）
+### 已完成（0.2.x → 0.6.0）
+
+- [x] 分阶段调研（0.6.0）：`/survey-scan → scholar → map → papers → report`；`survey.json` 严格顺序、`--force` skipped、legacy 兼容；`papers` 产出深读队列交给 `/paper`
+- [x] 工作区修复：命令 / 工具 / 钩子统一从会话 `workingDirectory` 解析项目根，命令启动时自动切换工作区，不再落到 `dsh` 启动目录（0.5.1）
 
 - [x] 项目结构 v2（`codes / knowledge / research / data / experiments / outputs / envs / scratch`）+ `vault migrate`
 - [x] loop 断点续跑（`loop_status(resume=true)` + `vault loop resume`）
@@ -378,7 +386,7 @@
 - [x] 科研记录 12 工具（record 3 + study 9）
 - [x] `vault` CLI（index/list/show/diff/deprecate/prune/export/loop）
 - [x] `cite-check --deep` 全链校验
-- [x] 7 个斜杠命令 + 约定 loop
+- [x] 12 个斜杠命令 + 约定 loop
 - [x] 强制层（3 钩子 + 拦停 + 挂起 + 四终态）
 - [x] 项目脚手架（目录 + bib + INDEX）
 
@@ -396,6 +404,9 @@
 3. **guard 的 bash 判定**：基于字符串特征，可能误伤/漏判
 4. **pre-step 每步读 loop 文件**：loop 很多时会有 IO 开销（当前可接受）
 5. **`loop_close` 失败返回字符串而非抛错**：模型是否读懂缺项未验证
+6. **分阶段调研仅支持 v2**：v1 只识别 legacy `report.md`，补阶段需先 `vault migrate`
+7. **阶段门槛固定**：8 URL / 12 候选 / 10 篇 / 5 引用，暂不提供 `--min-*`；冷门领域可能需 `--force`
+8. **`min-citekeys` 是启发式**：按“表格中含 4 位年份的 key 形状”识别；异常 citekey 可能漏计，必要时用 `--force` 或调整表格
 
 ---
 
@@ -404,7 +415,7 @@
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | 模型无视 loop 契约 | 强制层失效 | 拦停 + 具体契约文案 + `/status` 标红 |
-| 拦停烧 token | 成本 | 上限 3/5 + stalled 放行 + `--abort` |
+| 拦停烧 token | 成本 | 上限 2/3（derive 5）+ stalled 放行 + `--abort` |
 | 自动建项目污染目录 | 混乱 | `autoCreated` 标记 + `--no-init` + `study_init` 可改名 |
 | 工件格式漂移 | 复现失败 | schema 版本 + 迁移 + 双向兼容测试 |
 | 命名冲突（与其它 bundle） | 挂载失败 | 同层重名会直接报错；命令名避开内置 |

@@ -99,7 +99,9 @@ const fakeCtx = {
   inject: (_deps, cb) => cb({ commands: { register: (def) => { commands.push(def); return () => {} } } }),
   on: (event, handler) => { hooks[event] = handler; return () => {} },
   tools: { guard: (fn) => { guards.push(fn); return () => {} }, register: () => () => {} },
-  get: (name) => (name === 'sessions' ? { get: () => ({ cwd: process.cwd() }) } : undefined),
+  get: (name) => (name === 'workingDirectory'
+    ? { ensure: async () => process.cwd(), get: () => process.cwd(), set: async (_agent, next) => next }
+    : undefined),
 }
 
 for (const [specifier, label] of [
@@ -122,8 +124,11 @@ for (const [specifier, label] of [
 }
 
 const commandNames = commands.map((d) => d.name).sort()
-ok(commands.length === 7, `应注册 7 个斜杠命令，实际 ${commands.length}：${commandNames.join(', ')}`)
-for (const expected of ['derive', 'paper', 'review', 'status', 'study-init', 'survey', 'write']) {
+ok(commands.length === 12, `应注册 12 个斜杠命令，实际 ${commands.length}：${commandNames.join(', ')}`)
+for (const expected of [
+  'derive', 'paper', 'review', 'status', 'study-init', 'survey', 'write',
+  'survey-scan', 'survey-scholar', 'survey-map', 'survey-papers', 'survey-report',
+]) {
   ok(commandNames.includes(expected), `缺少 /${expected}`)
 }
 ok(typeof hooks['agent/pre-step'] === 'function', '强制层缺 pre-step')
@@ -139,4 +144,4 @@ if (problems.length) {
   console.error('\n✗ 失败项:\n  - ' + problems.join('\n  - '))
   process.exit(1)
 }
-console.log('\n✓ 挂载冒烟通过（7 个模块按包名解析、apply() 全部成功、21 工具 + 7 命令 + 3 钩子）')
+console.log('\n✓ 挂载冒烟通过（7 个模块按包名解析、apply() 全部成功、21 工具 + 12 命令 + 3 钩子）')

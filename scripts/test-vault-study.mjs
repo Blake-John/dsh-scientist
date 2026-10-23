@@ -14,7 +14,13 @@ const problems = []
 const ok = (cond, msg) => { if (!cond) problems.push(msg) }
 
 const captured = []
-apply({ tools: { register: (d) => (captured.push(d), () => {}) } })
+const ctx = {
+  get: (name) => (name === 'workingDirectory'
+    ? { ensure: async (agent) => agent.session.header.cwd }
+    : undefined),
+  tools: { register: (d) => (captured.push(d), () => {}) },
+}
+apply(ctx)
 const byName = Object.fromEntries(captured.map((d) => [d.name, d]))
 const call = (n, a) => byName[n].execute(a, { signal: new AbortController().signal })
 const expectErr = async (fn, re, label) => {
@@ -221,6 +227,19 @@ try {
   } finally {
     await rm(root2, { recursive: true, force: true })
     delete process.env.VAULT_HISTORY_CAP
+  }
+  // ── 无显式 root：必须落到 agent 的 workingDirectory，而不是进程 cwd ──
+  const agentRoot = await mkdtemp(join(tmpdir(), 'vault-study-agent-'))
+  try {
+    const out = await byName.study_init.execute(
+      { title: 'Agent 工作区' },
+      { agent: { id: 'a1', session: { header: { cwd: agentRoot } } } },
+    )
+    ok(/已创建研究/.test(out), `无 root 时应按 agent 工作区初始化：${out}`)
+    const text = await readFile(join(agentRoot, 'research/study.json'), 'utf8').catch(() => '')
+    ok(text.includes('Agent 工作区'), 'study.json 应落在 agent 工作区')
+  } finally {
+    await rm(agentRoot, { recursive: true, force: true })
   }
 } finally {
   await rm(root, { recursive: true, force: true })

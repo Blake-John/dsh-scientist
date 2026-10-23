@@ -18,9 +18,9 @@ jobs:
       # 配了 NPM_TOKEN 就用 token；没配则走 npm 可信发布（OIDC）
       HAS_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -29,8 +29,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils
-          python3 -m pip install --quiet --user pymupdf pymupdf4llm pdfplumber
-          python3 -c "import pymupdf, pymupdf4llm, pdfplumber; print('python deps ok')"
+          # 依赖锁在 scripts/requirements-ci.txt：pymupdf 2.x 改了 4llm 的 markdown
+          # 输出（标题不再带 `##`），会让 pdf_* 测试变红；本地 Python 3.10 装不到
+          # 2.x，所以本地一直是绿的。pymupdf 1.x 不依赖 PyYAML，而 validate.py 需要它。
+          python3 -m pip install --quiet --user -r scripts/requirements-ci.txt
+          python3 -c "import pymupdf, pymupdf4llm, pdfplumber, yaml; print('python deps ok:', pymupdf.__version__)"
           which pdftotext pdftoppm
 
       - name: 升级 npm（可信发布 / provenance 需要 npm >= 11.5.2）
@@ -67,10 +70,11 @@ jobs:
             if (p.license !== "Apache-2.0") fail("license 应为 Apache-2.0，实际 " + p.license);
             console.log("✓ bundle patch:", p.dsh.bundle.patch, "| license:", p.license, "| version:", p.version);
           '
+          EXPECTED=$(find skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
           SKILLS=$(tar -tzf "$TGZ" | grep -c "^package/skills/[^/]*/SKILL.md$" || true)
-          echo "✓ 技能数: $SKILLS"
-          if [ "$SKILLS" -ne 16 ]; then
-            echo "::error::技能数应为 16，实际 $SKILLS"
+          echo "✓ 技能数: $SKILLS（源目录 $EXPECTED）"
+          if [ "$SKILLS" -ne "$EXPECTED" ]; then
+            echo "::error::包内技能数 ($SKILLS) 与源目录 ($EXPECTED) 不一致"
             exit 1
           fi
 
@@ -111,7 +115,11 @@ jobs:
         if: steps.probe.outputs.exists != 'true'
         run: |
           VER=$(node -p "require('./package.json').version")
-          sleep 5
+          for i in 1 2 3 4 5; do
+            if npm view "dsh-scientist@$VER" version >/dev/null 2>&1; then break; fi
+            echo "registry 尚未同步，等待 6s…（$i/5）"
+            sleep 6
+          done
           echo "registry 上的 latest: $(npm view dsh-scientist version)"
           npm view "dsh-scientist@$VER" dsh.bundle.patch
           npm view "dsh-scientist@$VER" license

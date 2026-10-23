@@ -14,7 +14,7 @@ whenToUse: 开始新科研项目、把已有材料组织成可运行的研究项
 | 层 | 目录 | 内容 | 是否入 git |
 | --- | --- | --- | --- |
 | 代码 | `codes/` | 可复用模块、notebooks、scripts、tests | 入 |
-| 知识 | `knowledge/surveys/` | 领域调研：`<topic>/{report,scope,refs,timeline}.md` | 入 |
+| 知识 | `knowledge/surveys/` | 分阶段调研：`<topic>/{survey.json, scope.md, sources.md, queries.md, candidates.md, landscape.md, papers.md, report.md}` | 入 |
 | 知识 | `knowledge/literature/` | 论文笔记、`references.bib`、`pdfs/`、`queries.md` | 入（PDF 可选/LFS） |
 | 知识 | `knowledge/reports/` | 周报/月报/组会总结 | 入 |
 | 知识 | `knowledge/logs/` | 研究日志（按日期，跨实验） | 入 |

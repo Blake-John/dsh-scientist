@@ -15,7 +15,7 @@
 // 事件 payload 由 dispatch 的 fused() 自动注入 agent（packages/core/agent/src/dispatch.ts:113）。
 
 import { randomUUID } from 'node:crypto'
-import { resolveRoot } from './vault-core.mjs'
+import { agentCwd, resolveRoot } from './vault-core.mjs'
 import { activeLoop, bumpNudge, describeContract, isSuspended, stallLoop } from './vault-loop-core.mjs'
 
 export const name = 'dsh-scientist-vault-enforce'
@@ -60,21 +60,18 @@ export function reminderText(loop) {
 }
 
 export function apply(ctx) {
-  // 每个 agent 的工作目录缓存（sessions 服务按 agent.id 查）
+  // 每个 agent 的工作目录缓存（按 cwd 失效：模型 cd / 命令切工作区后重新解析）
   const rootCache = new Map()
 
   const rootFor = async (agent) => {
     const id = agent?.id
     if (!id) return null
-    if (rootCache.has(id)) return rootCache.get(id)
-    let cwd = process.cwd()
-    try {
-      cwd = ctx.get?.('sessions')?.get?.(id)?.cwd ?? cwd
-    } catch {
-      /* 没有 sessions 服务时退回进程 cwd */
-    }
+    const cwd = await agentCwd(ctx, agent).catch(() => null)
+    if (!cwd) return null
+    const cached = rootCache.get(id)
+    if (cached?.cwd === cwd) return cached.root
     const root = await resolveRoot(cwd).catch(() => null)
-    if (root) rootCache.set(id, root)
+    if (root) rootCache.set(id, { cwd, root })
     return root
   }
 

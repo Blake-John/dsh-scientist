@@ -1,0 +1,15 @@
+# CI 的 Python 侧依赖（ci.yml / publish.yml 共用）。
+#
+# 为什么锁版本：
+# - pymupdf 2.0（2026-10-19 发布）要求 Python >= 3.11，并把 pymupdf4llm 收进
+#   pymupdf；其 markdown 输出不再给标题加 `##`，会让 test-pdf-tools 里的
+#   `## 1. Introduction` 断言失败。本地 Python 3.10 装不到 2.x，所以本地全绿、
+#   CI 变红。
+# - pymupdf 1.x 不依赖 PyYAML，而 scripts/validate.py 需要它，必须显式安装。
+#
+# 升级 pymupdf 时请同步改 pdf-extract.py / test-pdf-tools.mjs 的标题断言。
+pymupdf==1.27.2
+pymupdf4llm==1.27.2.1
+pymupdf-layout==1.27.2
+pdfplumber==0.11.9
+pyyaml==6.0.3

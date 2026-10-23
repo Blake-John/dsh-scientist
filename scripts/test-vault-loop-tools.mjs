@@ -17,17 +17,28 @@ try {
   await mkdir(join(root, 'reports'), { recursive: true })
 
   const reg = []
-  apply({ tools: { register: (d) => (reg.push(d), () => {}) } })
+  const ctx = {
+    get: (name) => (name === 'workingDirectory'
+      ? { ensure: async (agent) => agent.session.header.cwd }
+      : undefined),
+    tools: { register: (d) => (reg.push(d), () => {}) },
+  }
+  apply(ctx)
   ok(reg.length === 3, `应注册 3 个工具，实际 ${reg.length}`)
   const t = Object.fromEntries(reg.map((d) => [d.name, d]))
   for (const n of ['loop_note', 'loop_close', 'loop_status']) ok(t[n], `缺少 ${n}`)
   const call = (n, a) => t[n].execute(a, { cwd: root })
+  const callAgent = (n, a) => t[n].execute(a, { agent: { id: 'a1', session: { header: { cwd: root } } } })
 
   // 无 loop
   const none = await call('loop_note', { note: 'x' }).then(() => 'no-error', (e) => e.message)
   ok(/没有进行中或卡住的 loop/.test(none), `无 loop 应报错：${none}`)
 
   const loop = await createLoop(root, { kind: 'survey', arg: 'x', requires: ['file:reports/x.md'], workMin: 2 })
+
+  // 宿主不提供 exec.cwd：必须从 agent 的 workingDirectory 解析项目根
+  const listed = await callAgent('loop_status', {})
+  ok(listed.includes(loop.id), `工具应从 agent 工作区解析 root：${listed}`)
 
   // note
   const n1 = await call('loop_note', { note: '第一步' })

@@ -3,7 +3,7 @@
 // 只覆盖当前实测可访问的源：Crossref / arXiv / PubMed / Europe PMC / LibGen。
 // OpenAlex、Semantic Scholar、Unpaywall 因限流或缺少邮箱未实现（见 lit-core 顶部注释）。
 
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import {
   LitError,
   appendBib,
@@ -22,6 +22,7 @@ import {
   verifyPdf,
 } from './lit-core.mjs'
 import { projectLayout } from './project-layout.mjs'
+import { bindAgentCwd } from './vault-core.mjs'
 
 export const name = 'dsh-scientist-lit'
 export const inject = ['tools']
@@ -48,7 +49,11 @@ const tool = ({ name, description, parameters, presentTitle, execute }) => ({
   presentCall: (args) => ({ card: 'generic', title: presentTitle, kind: 'other', rawInput: args }),
 })
 
-const rootOf = (args) => (typeof args.root === 'string' && args.root ? args.root : process.cwd())
+const rootOf = (args, exec) => {
+  const base = exec?.cwd ?? process.cwd()
+  const raw = typeof args.root === 'string' && args.root ? args.root : base
+  return isAbsolute(raw) ? raw : resolve(base, raw)
+}
 
 const fmtDoi = (record) =>
   [
@@ -66,8 +71,9 @@ const fmtDoi = (record) =>
     .join('\n')
 
 export function apply(ctx) {
+  const register = (def) => ctx.tools.register(bindAgentCwd(ctx, def))
   // ── 检索 ──────────────────────────────────────────────────────────────────
-  ctx.tools.register(
+  register(
     tool({
       name: 'lit_search',
       description:
@@ -131,7 +137,7 @@ export function apply(ctx) {
   )
 
   // ── 元数据 ────────────────────────────────────────────────────────────────
-  ctx.tools.register(
+  register(
     tool({
       name: 'lit_doi',
       description:
@@ -152,7 +158,7 @@ export function apply(ctx) {
   )
 
   // ── 书目 ──────────────────────────────────────────────────────────────────
-  ctx.tools.register(
+  register(
     tool({
       name: 'lit_bib',
       description:
@@ -166,7 +172,7 @@ export function apply(ctx) {
           out: { type: 'string', description: 'bib 文件路径（相对 root），默认 knowledge/literature/references.bib' },
           citekey: { type: 'string', description: '自定义 citekey；缺省自动生成' },
           write: { type: 'boolean', description: '是否写入文件，默认 true；false 只返回条目' },
-          root: { type: 'string', description: '项目根目录，默认进程工作目录' },
+          root: { type: 'string', description: '项目根目录，默认会话工作区' },
         },
         required: ['doi'],
       },
@@ -177,7 +183,7 @@ export function apply(ctx) {
         const bib = toBibtex(record, citekey)
         const warn = bib.problems.length ? `\n\n⚠ 待补：${bib.problems.join('；')}` : ''
         if (args.write === false) return `${bib.entry}${warn}`
-        const root = rootOf(args)
+        const root = rootOf(args, exec)
         const layout = await projectLayout(root)
         const rel = args.out ?? layout.bib
         const path = rel.startsWith('/') ? rel : join(root, rel)
@@ -190,7 +196,7 @@ export function apply(ctx) {
   )
 
   // ── 全文 ──────────────────────────────────────────────────────────────────
-  ctx.tools.register(
+  register(
     tool({
       name: 'lit_pdf',
       description:
@@ -205,13 +211,13 @@ export function apply(ctx) {
           arxiv_id: { type: 'string', description: 'arXiv id，如 1706.03762' },
           out_dir: { type: 'string', description: '输出目录（相对 root），默认 knowledge/literature/pdfs' },
           citekey: { type: 'string', description: '文件名用 citekey；缺省自动生成' },
-          root: { type: 'string', description: '项目根目录，默认进程工作目录' },
+          root: { type: 'string', description: '项目根目录，默认会话工作区' },
         },
       },
       presentTitle: '获取论文全文',
       async execute(args, exec) {
         if (!args.doi && !args.arxiv_id) throw new LitError('bad_input', '需要 doi 或 arxiv_id')
-        const root = rootOf(args)
+        const root = rootOf(args, exec)
         let citekey = args.citekey
         if (!citekey && args.doi) {
           const meta = await resolveDoi(args.doi, { signal: exec.signal }).catch(() => null)

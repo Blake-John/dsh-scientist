@@ -52,7 +52,12 @@ study_phase → 推进阶段
 | 命令 | 闭环 |
 |---|---|
 | `/study-init` | 建/更新项目（标题 + 核心问题） |
-| `/survey <方向>` | 调研 → `knowledge/surveys/<slug>/report.md` |
+| `/survey <主题>` | 分阶段调研状态页；`--next` 执行下一阶段 |
+| `/survey-scan` | 1/5 定框 + 网络调研 → `scope.md` + `sources.md` |
+| `/survey-scholar` | 2/5 学术检索 → `queries.md` + `candidates.md` |
+| `/survey-map` | 3/5 流派/时间线/gap → `landscape.md` |
+| `/survey-papers` | 4/5 论文总述 + 深读队列 → `papers.md` |
+| `/survey-report` | 5/5 综合报告 → `report.md` |
 | `/paper <DOI\|id\|标题>` | 精读 → `knowledge/literature/notes/<citekey>.md` + bib |
 | `/derive <命题>` | 推导/论证 → `experiments/derivations/<id>/` |
 | `/write [目标]` | 成文 → 目标文件 + cite-check |

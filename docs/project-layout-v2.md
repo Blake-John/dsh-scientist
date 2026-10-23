@@ -23,7 +23,7 @@ project/
 │   ├── scripts/                  #   一次性脚本（成熟后提升为 module）
 │   └── tests/
 ├── knowledge/                    # 学到的东西（过程性知识）
-│   ├── surveys/                  #   领域调研：<topic>/{report,scope,refs,timeline}.md
+│   ├── surveys/                  #   分阶段调研：<topic>/{survey.json, scope.md, sources.md, queries.md, candidates.md, landscape.md, papers.md, report.md}
 │   ├── literature/               #   论文与学习笔记
 │   │   ├── notes/<citekey>.md
 │   │   ├── pdfs/<citekey>.pdf
@@ -106,7 +106,7 @@ project/
 | 命令/工具 | 路径 |
 |---|---|
 | `/study-init` | `research/study.json`、`research/INDEX.md`、根 `README.md`/`.gitignore` |
-| `/survey` | `knowledge/surveys/<slug>/{report,scope,refs,timeline}.md` |
+| `/survey-*` | `knowledge/surveys/<slug>/{survey.json, scope.md, sources.md, queries.md, candidates.md, landscape.md, papers.md, report.md}` |
 | `/paper` | `knowledge/literature/notes/<citekey>.md`、`knowledge/literature/references.bib` |
 | `/derive` | `experiments/derivations/<id>/{derive.py,validation.md}` |
 | `/write` | 默认 `knowledge/reports/progress-YYYYMMDD.md`；论文目标可写 `outputs/manuscript/...` |

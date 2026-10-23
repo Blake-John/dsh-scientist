@@ -272,6 +272,50 @@ try {
   ok(v17.ok, `更新后应通过：${JSON.stringify(v17.failures)}`)
   await abortLoop(root, loop14.id, '测试用')
 
+  // ── min-links：不同 URL 数量 ──
+  const loopLinks = await createLoop(root, {
+    kind: 'survey',
+    arg: 'links',
+    requires: ['min-links:reports/links.md:2'],
+  })
+  await writeFile(join(root, 'reports/links.md'), '| 来源 | URL |\n|---|---|\n| A | https://example.com/a |\n')
+  const vLinks1 = await verifyExit(root, await readLoop(root, loopLinks.id))
+  ok(vLinks1.failures.some((f) => f.includes('链接不足')), `一个 URL 不应通过：${JSON.stringify(vLinks1.failures)}`)
+  await writeFile(join(root, 'reports/links.md'), '| 来源 | URL |\n|---|---|\n| A | https://example.com/a |\n| B | https://example.com/b |\n')
+  const vLinks2 = await verifyExit(root, await readLoop(root, loopLinks.id))
+  ok(vLinks2.ok, `两个 URL 应通过：${JSON.stringify(vLinks2.failures)}`)
+  await abortLoop(root, loopLinks.id, '测试用')
+
+  // ── min-citekeys：表格 citekey 列 ──
+  const loopKeys = await createLoop(root, {
+    kind: 'survey',
+    arg: 'table-keys',
+    requires: ['min-citekeys:reports/table-keys.md:3'],
+  })
+  await writeFile(join(root, 'reports/table-keys.md'), '| citekey | 年份 |\n|---|---|\n| paper2020a | 2020 |\n| paper2021b | 2021 |\n')
+  const vKeys1 = await verifyExit(root, await readLoop(root, loopKeys.id))
+  ok(vKeys1.failures.some((f) => f.includes('citekey 不足')), `两行不应通过：${JSON.stringify(vKeys1.failures)}`)
+  await writeFile(join(root, 'reports/table-keys.md'), '| citekey | 年份 |\n|---|---|\n| paper2020a | 2020 |\n| paper2021b | 2021 |\n| paper2022c | 2022 |\n')
+  const vKeys2 = await verifyExit(root, await readLoop(root, loopKeys.id))
+  ok(vKeys2.ok, `三行应通过：${JSON.stringify(vKeys2.failures)}`)
+  await abortLoop(root, loopKeys.id, '测试用')
+
+  // ── citations-bib：候选表/论文表的 citekey 列也要查 bib ──
+  await mkdir(join(root, 'literature'), { recursive: true })
+  await writeFile(join(root, 'literature', 'references.bib'), '@article{paper2020a, title={A}}\n')
+  await writeFile(join(root, 'reports', 'candidates.md'), '| citekey | 年份 |\n|---|---|\n| paper2020a | 2020 |\n| paper2021b | 2021 |\n')
+  const loopBib = await createLoop(root, {
+    kind: 'survey',
+    arg: 'table-bib',
+    requires: ['citations-bib:reports/candidates.md'],
+  })
+  const vBib1 = await verifyExit(root, await readLoop(root, loopBib.id))
+  ok(vBib1.failures.some((f) => f.includes('paper2021b')), `表格 citekey 缺失应报出：${JSON.stringify(vBib1.failures)}`)
+  await writeFile(join(root, 'literature', 'references.bib'), '@article{paper2020a, title={A}}\n@article{paper2021b, title={B}}\n')
+  const vBib2 = await verifyExit(root, await readLoop(root, loopBib.id))
+  ok(vBib2.ok, `补齐 bib 后表格 citekey 应通过：${JSON.stringify(vBib2.failures)}`)
+  await abortLoop(root, loopBib.id, '测试用')
+
   // ── CLI 全流程 ──
   const cli = async (...args) => {
     try {

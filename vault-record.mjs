@@ -27,6 +27,7 @@ import { basename, dirname, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import {
   appendJsonl,
+  bindAgentCwd,
   DEFAULT_IGNORE_NAMES,
   hashFileStreaming,
   humanBytes,
@@ -132,7 +133,7 @@ const relToRecords = (root, abs) => relative(paths(root).recordsDir, abs).split(
 // ── 工具 1：record_save ─────────────────────────────────────────────────────
 
 async function cmdSave(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const displayName = requireStr(args, 'name')
   const slug = slugify(displayName)
   const sources = Array.isArray(args.sources) ? args.sources.filter((s) => typeof s === 'string' && s.trim()) : []
@@ -378,7 +379,7 @@ async function cmdSave(args, exec) {
 // ── 工具 2：record_verify ───────────────────────────────────────────────────
 
 async function cmdVerify(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const displayName = requireStr(args, 'name')
   const slug = slugify(displayName)
   const dir = artifactDir(root, slug)
@@ -537,7 +538,7 @@ async function cmdVerify(args, exec) {
 // ── 工具 3：record_reproduce ────────────────────────────────────────────────
 
 async function cmdReproduce(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const displayName = requireStr(args, 'name')
   const slug = slugify(displayName)
   const dir = artifactDir(root, slug)
@@ -653,7 +654,8 @@ async function cmdReproduce(args, exec) {
 // ── 注册 ────────────────────────────────────────────────────────────────────
 
 export function apply(ctx) {
-  ctx.tools.register(
+  const register = (def) => ctx.tools.register(bindAgentCwd(ctx, def))
+  register(
     tool({
       name: 'record_save',
       description:
@@ -686,7 +688,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'record_verify',
       description:
@@ -722,7 +724,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'record_reproduce',
       description:

@@ -9,7 +9,9 @@ import { mkdir, readFile, readdir, stat, symlink, utimes, writeFile, mkdtemp, rm
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  agentCwd,
   appendJsonl,
+  bindAgentCwd,
   DEFAULT_IGNORE_NAMES,
   hashFileStreaming,
   hashText,
@@ -24,6 +26,7 @@ import {
   resolveRoot,
   shortHash,
   slugify,
+  switchAgentCwd,
   VaultError,
   vaultErr,
   walkSources,
@@ -70,6 +73,8 @@ try {
   const proj = join(dir, 'proj')
   await mkdir(join(proj, 'research'), { recursive: true })
   ok((await resolveRoot(proj)) === proj, 'resolveRoot 显式路径')
+  ok((await resolveRoot('proj', dir)) === proj, 'resolveRoot 相对路径按 base 解析')
+  ok((await resolveRoot(undefined, join(proj, 'research'))) === proj, 'resolveRoot 从子目录向上找标记')
   await expectCode(() => resolveRoot(join(dir, 'nope')), 'ERR_BAD_ROOT', 'resolveRoot 非法路径')
   ok(withinRoot(proj, 'research/x.json').startsWith(proj), 'withinRoot 正常')
   await expectCode(() => withinRoot(proj, '../escape'), 'ERR_OUTSIDE_ROOT', 'withinRoot 拒绝穿越')
@@ -247,6 +252,31 @@ try {
   ok(shortHash('abcdef1234567890', 6) === 'abcdef', 'shortHash')
   ok(/^\d{4}-\d{2}-\d{2}T/.test(nowISO()), 'nowISO 格式')
   ok(vaultErr('ERR_X', 'm') instanceof VaultError, 'vaultErr 返回 VaultError')
+
+  // ── 10. Agent 工作区解析 ───────────────────────────────────────────────────
+  const fakeAgent = { id: 'a1', session: { header: { cwd: '/header/dir' } } }
+  let switched = null
+  const wdCtx = {
+    get: (name) => (name === 'workingDirectory'
+      ? {
+          ensure: async () => '/wd/dir',
+          get: () => '/header/dir',
+          set: async (_agent, next) => { switched = next; return next },
+        }
+      : undefined),
+  }
+  ok((await agentCwd(wdCtx, fakeAgent)) === '/wd/dir', 'agentCwd 优先 workingDirectory')
+  ok((await agentCwd({ get: () => undefined }, fakeAgent)) === '/header/dir', 'agentCwd 退回 session header')
+  ok((await switchAgentCwd(wdCtx, fakeAgent, '/wd/dir')) === true && switched === '/wd/dir', 'switchAgentCwd 切换工作区')
+  const bound = bindAgentCwd(wdCtx, { execute: async (_args, exec) => exec.cwd })
+  ok((await bound.execute({}, { agent: fakeAgent })) === '/wd/dir', 'bindAgentCwd 注入 exec.cwd')
+  const failCtx = {
+    get: (name) => (name === 'workingDirectory'
+      ? { ensure: async () => '/wd/dir', get: () => '/header/dir', set: async () => { throw new Error('boom') } }
+      : undefined),
+  }
+  const failMsg = await switchAgentCwd(failCtx, fakeAgent, '/wd/dir').then(() => 'no-error', (e) => e.message)
+  ok(failMsg === 'boom', `switchAgentCwd 失败必须抛错，实际 ${failMsg}`)
 } finally {
   await rm(dir, { recursive: true, force: true })
 }

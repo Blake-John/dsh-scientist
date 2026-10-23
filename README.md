@@ -6,7 +6,7 @@
 
 | 支柱 | 能力 | 技能 |
 |---|---|---|
-| 领域调研 | 把方向测绘成可决策的地图：流派、时间线、方法对比、gap 判定、最小切入点 | `domain-survey` |
+| 领域调研 | 分阶段漏斗：网络调研 → 学术检索 → 流派/时间线/对比/gap → 论文总述 → 综合报告 | `domain-survey` |
 | 文献检索 | 4 个原生工具：`lit_search`（多源检索）/ `lit_doi`（DOI 元数据）/ `lit_bib`（生成 BibTeX）/ `lit_pdf`（取全文） | `literature-retrieval` |
 | 科研记录 | 12 个原生工具：`study_*`（9）+ `record_*`（3） | `research-loop` / `artifact-provenance` |
 | 读 PDF | 页面画像 → 结构化 md / 纯文本 / 表格 / 渲染成图四路并用，公式与图表视觉兜底，产出带页码的笔记 | `pdf-reading` |
@@ -30,6 +30,18 @@ project/
 
 每个目录有 `README.md` 说明用途；根 `README.md` 是项目首页，`research/INDEX.md` 是自动生成的项目地图。
 完整约定、边界规则与 v1→v2 迁移见 [docs/project-layout-v2.md](docs/project-layout-v2.md)。
+
+## 工作区（先确认这一条）
+
+所有命令与工具都以**会话工作区**为根（DSH `workingDirectory`，即新建会话时选定的目录），
+**不再使用 `dsh` 进程的启动目录**；只有会话完全没有记录 cwd 时才退回启动目录。
+
+- `/study-init`、`/survey-*` 等命令会把会话工作区切到解析出的项目根；之后 `write` / `bash` / `edit`
+  与 `study_*` / `record_*` / `lit_*` 都落在同一处，不会再出现“命令建在 A、工具写到 B”。
+- 需要显式指定项目：`/survey-scan "方向" --root /path/to/project`（命令会切到该目录）。
+- 已有项目：在项目根（含 `research/study.json`）新建会话，或命令里给 `--root`。
+- 检查当前目录：看系统提示里的 `Current working directory`；若当前组合提供 `working_directory` 工具，也可直接调用。终端里的 `pwd` 只反映启动目录，不代表会话工作区。
+- 新建会话时没有选工作区，DSH 会沿用启动目录；这时请换工作区或显式给 `--root`。
 
 ## 文献链路（4 个原生工具）
 
@@ -124,17 +136,28 @@ bash scripts/install-cli.sh          # → ~/.local/bin/{lit,lit-lib,cite-check,
 输入框里敲 `/` 可见。命令把**入口契约**与**出口契约**用代码钉死，中段交给模型；
 不敲命令时完全不介入，按对话自由推进。
 
-| 命令 | 闭环 | 出口校验 |
+调研采用**分阶段漏斗**，一次只做一个阶段：
+
+| 命令 | 阶段 | 产物 / 出口 |
 |---|---|---|
-| `/study-init [标题] --question "…"` | 建/更新项目 | study.json |
-| `/survey <方向>` | 调研 | landscape 报告 + ≥5 引用 + gap |
-| `/paper <DOI\|id\|标题>` | 精读 | 笔记 + bib + 核心主张/方法要点/局限 |
+| `/survey [主题]` | 调研状态页 | 只读；`--next` 执行下一阶段 |
+| `/survey-scan <主题>` | 1/5 定框 + 网络调研 | `scope.md` + `sources.md`（≥8 个 URL） |
+| `/survey-scholar <主题>` | 2/5 学术检索 | `queries.md` + `candidates.md`（≥12 个 citekey） |
+| `/survey-map <主题>` | 3/5 流派/时间线/gap | `landscape.md`（≥5 引用 + 对比表 + gap） |
+| `/survey-papers <主题>` | 4/5 论文总述 | `papers.md`（≥10 篇 + 纳入/排除 + 深读队列） |
+| `/survey-report <主题>` | 5/5 综合报告 | `report.md`（≥5 引用 + gap + 不确定性） |
+| `/paper <DOI\|id\|标题>` | 单篇精读 | 笔记 + bib + 核心主张/方法要点/局限 |
 | `/derive <命题>` | 推导/论证 | derive.py 可执行 + validation.md |
 | `/write [目标\|§N]` | 成文 / 按章节 | 目标文件 + `cite-check --deep` |
 | `/review [对象]` | 评审 | study.json 新增 review |
 | `/status [id]` | 进度 / 接手 | 只读；`--brief` `--abort` `--json` |
+| `/study-init [标题] --question "…"` | 建/更新项目 | study.json |
 
-强制层只在 loop 激活期生效：每步提醒缺项、未完成阻止收尾（默认 3 次，`/derive` 5 次）、
+调研阶段严格按 `scan → scholar → map → papers → report` 推进，状态落在
+`knowledge/surveys/<slug>/survey.json`；`--force` 可跳过前序（标 `skipped`，状态页会提示证据链不完整）。
+`papers` 只产出深读队列，单篇用 `/paper <citekey>` 精读。
+
+强制层只在 loop 激活期生效：每步提醒缺项、未完成阻止收尾（默认 2–3 次，`/derive` 5 次）、
 禁止直接改 `research/loops/**`。终态：`closed` / `failed`（须给原因）/ `stalled` / `aborted`。
 设计见 [docs/command-loops-plan.md](docs/command-loops-plan.md)。
 
@@ -260,7 +283,7 @@ scientist/
 
 ```bash
 bash scripts/verify.sh              # 全部检查
-bash scripts/verify.sh --offline    # 跳过需要网络的 MCP 探测
+bash scripts/verify.sh               # 离线检查；加 --live 跑联网实测
 ```
 
 交付时已通过：
@@ -268,12 +291,12 @@ bash scripts/verify.sh --offline    # 跳过需要网络的 MCP 探测
 | 检查 | 结果 |
 |---|---|
 | 结构（27 个顶层插件行、15 个技能 frontmatter、preset.yml） | 通过 |
-| loader 方言（真实 `entryListSchema` + 7 个 `!!js` 求值） | 通过 |
+| loader 方言（真实 `entryListSchema` + 2 个 `!!js` 求值） | 通过 |
 | bundle patch 与源组合一致 / 注册正确 | 通过 |
 | skills-provider 单测（frontmatter + 15 候选 + 正文加载） | 通过 |
 | cite-check 自测（悬空 citekey、缺失字段） | 通过 |
 | lit 4 个工具结构 + 离线单测 | 通过 |
-| 约定 loop / 7 命令 / 强制层（状态机、出口校验、拦停、guard） | 通过 |
+| 约定 loop / 12 命令 / 分阶段调研 / 强制层（状态机、出口校验、拦停、guard） | 通过 |
 | lit 联网实测（`--live`） | 通过：lit_doi / lit_search / lit_bib / lit_pdf(arXiv) / lit_pdf(LibGen) |
 
 真正挂载进会话需要重启 dsh web 进程。重启后新建会话 → 选「科学家模式」→
@@ -295,6 +318,11 @@ bash scripts/verify.sh --offline    # 跳过需要网络的 MCP 探测
 - `cite-check` 的 DOI 核对只覆盖 Crossref/DataCite 可查的 DOI；arXiv 走 DataCite（`10.48550/*`），无 DOI 的条目只做字段与引用一致性检查。
 - 文献源只接了 5 个：OpenAlex / Semantic Scholar / Unpaywall 因限流或缺少邮箱未实现（`lit-core.mjs` 顶部留有 TODO，恢复后每个约 40 行适配器）。
 - **不含 sci-hub**；LibGen 仅支持 DOI 精确匹配（实测标题搜索会返回同名不同论文）。
+- **分阶段调研需要 v2 项目**：v1 旧项目只识别 `report.md`（legacy），补阶段前先 `vault migrate --to v2`。
+- 旧版只有 `report.md`、没有 `survey.json` 的项目会显示 `legacy`：前四阶段 `skipped`、`report` `done`；补阶段用 `--force`。
+- 阶段门槛是固定默认值（scan 8 个 URL / scholar 12 个候选 / papers 10 篇 / map、report 各 5 个引用）；
+  冷门领域可 `--force` 跳过前序，但当前不提供 `--min-*` 调节。
+- `papers` 只产出深读队列；单篇精读需逐个 `/paper <citekey>`，不自动批量读全文。
 - **本机部署未挂载 `@deepseek-ai/dsh-agent-presets`**（目录发现），所以必须走 bundle 安装；`~/.dsh/.agent-presets/` 里的目录不会生效。
 - `link:` 安装绑绝对路径，换机器要重装；发布到 npm 可解决。
 - bundle 组合在启动时完成：改 `agent.cordis.yml` 后要 `build-patch.mjs` + 重启，不像 profile patch 能热应用。

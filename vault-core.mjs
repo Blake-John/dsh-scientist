@@ -60,25 +60,95 @@ export function slugify(value, fallback = 'item') {
   return slug
 }
 
-/** 项目根：向上找含这些标记的目录 */
+/** 项目根标记：命中任一即认为是项目根 */
 const ROOT_MARKERS = ['research', 'literature', 'artifacts', '.dsh', '.git']
 
-export async function resolveRoot(explicit) {
+/**
+ * 项目根：显式路径优先（相对路径按 base 解析，默认进程 cwd）；
+ * 否则从 base（默认进程 cwd）向上找含标记的目录。
+ */
+export async function resolveRoot(explicit, base) {
   if (explicit) {
-    const abs = resolve(explicit)
+    const abs = resolve(base ?? process.cwd(), explicit)
     const info = await stat(abs).catch(() => null)
     if (!info?.isDirectory()) throw vaultErr('ERR_BAD_ROOT', `项目根不是目录：${abs}`)
     return abs
   }
-  let dir = resolve(process.cwd())
+  let dir = resolve(base ?? process.cwd())
   for (;;) {
     for (const marker of ROOT_MARKERS) {
       const hit = await stat(join(dir, marker)).catch(() => null)
       if (hit) return dir
     }
     const parent = dirname(dir)
-    if (parent === dir) return resolve(process.cwd())
+    if (parent === dir) return resolve(base ?? process.cwd())
     dir = parent
+  }
+}
+
+/**
+ * Agent 的当前工作目录。
+ *
+ * 宿主不把 cwd 放进 ToolExecution（`exec.cwd` 不存在），Session 也没有顶层
+ * `cwd`；真实来源是 workingDirectory 服务（GUI 会话工作区 / 模型 `cd` 后的目录），
+ * 其次是 session header 的初始 cwd。两者都没有时才退回进程 cwd。
+ *
+ * @param {object} ctx Cordis 上下文（用 ctx.get 取可选服务，不强制 inject）
+ * @param {object} agent 当前 Agent
+ * @returns {Promise<string>} 绝对路径
+ */
+export async function agentCwd(ctx, agent) {
+  if (!agent) return process.cwd()
+  try {
+    const wd = ctx?.get?.('workingDirectory')
+    if (wd?.ensure) {
+      const cwd = await wd.ensure(agent)
+      if (typeof cwd === 'string' && cwd) return cwd
+    }
+  } catch {
+    /* 服务不可用或目录失效：退回 header */
+  }
+  try {
+    const cwd = agent?.session?.header?.cwd
+    if (typeof cwd === 'string' && cwd) return cwd
+  } catch {
+    /* 非标准 agent：退回进程 cwd */
+  }
+  return process.cwd()
+}
+
+/**
+ * 把会话工作区切到项目根（命令启动时用）。仅当不同才写。
+ * 没有 workingDirectory 服务时返回 false（headless / 测试）；
+ * 有服务但切换失败时抛错，由命令转成可见错误——绝不静默留在旧工作区。
+ *
+ * @returns {Promise<boolean>} 是否发生了切换
+ */
+export async function switchAgentCwd(ctx, agent, root) {
+  if (!agent || !root) return false
+  const wd = ctx?.get?.('workingDirectory')
+  if (!wd?.set) return false
+  const current = wd.get?.(agent.session) ?? agent?.session?.header?.cwd
+  if (current === root) return false
+  await wd.set(agent, root)
+  return true
+}
+
+/**
+ * 给工具定义补上 `exec.cwd`：宿主不提供，从 agent 的 workingDirectory 解析。
+ * 工具内部仍用 `exec?.cwd`，因此测试可显式传入，生产走 agent 工作区。
+ *
+ * @param {object} ctx Cordis 上下文
+ * @param {object} def 工具定义
+ * @returns {object} 包装后的工具定义
+ */
+export function bindAgentCwd(ctx, def) {
+  return {
+    ...def,
+    async execute(args, exec) {
+      const cwd = exec?.cwd ?? await agentCwd(ctx, exec?.agent)
+      return await def.execute(args, { ...exec, cwd })
+    },
   }
 }
 

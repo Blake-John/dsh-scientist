@@ -52,12 +52,21 @@
       | 命令 | 用途 | 出口（简要） |
       |---|---|---|
       | `/study-init` | 建/更新项目 | study.json 有标题 |
-      | `/survey` | 领域调研 | knowledge/surveys/<slug>/report.md + ≥5 引用 + gap |
+      | `/survey` | 调研入口/状态 | 显示阶段、产物、下一步；`--next` 执行下一阶段 |
+      | `/survey-scan` | 调研 1/5：定框 + 网络调研 | `scope.md` + `sources.md`（≥8 个 URL 来源表） |
+      | `/survey-scholar` | 调研 2/5：学术检索 + 候选论文 | `queries.md` + `candidates.md`（≥12 个 citekey） |
+      | `/survey-map` | 调研 3/5：流派/时间线/对比/gap | `landscape.md`（≥5 引用 + 对比表 + gap） |
+      | `/survey-papers` | 调研 4/5：论文总述 + 深读队列 | `papers.md`（≥10 篇 + 纳入/排除 + 深读队列） |
+      | `/survey-report` | 调研 5/5：综合报告 | `report.md`（≥5 引用 + gap + 不确定性） |
       | `/paper` | 精读单篇 | knowledge/literature/notes/<citekey>.md + bib + 核心主张/方法要点/局限 |
       | `/derive` | 推导/论证验证 | experiments/derivations/<id>/derive.py + validation.md |
       | `/write` | 撰写报告/日志 | 目标文件 + cite-check --deep |
       | `/review` | 评审对象 | study.json 新增 review |
       | `/status` | 查进度 / 接手 | 只读；`--brief` 跳过复看，`--abort` 中止 loop |
+
+      分阶段调研必须按 `/survey-scan → /survey-scholar → /survey-map → /survey-papers → /survey-report`
+      推进；每次只做一个阶段，不要提前做后续阶段。`/survey <主题>` 是状态页，
+      `/survey --next` 才会执行下一阶段。`/survey-papers` 只产出深读队列，单篇精读用 `/paper <citekey>`。
 
       收到命令注入的指令时：先读"出口契约"，按步骤骨架做，每完成一步调用
       `loop_note(note="…")`；做完调用 `loop_close()`（会自动校验，不合格会被拒绝并列出缺项）；
@@ -74,7 +83,9 @@
       书目用 lit_bib 生成（不要手写），元数据用 lit_doi 核对。
       筛出来要留的论文用 lit-lib 入库（结构化记录 + 受控关键词 + 标签），
       精读后回写 read_status / read_at 与笔记正文。
-      产出 knowledge/surveys/<topic>/report.md：结论必须带引用编号，每条论断能回溯到具体论文。
+      产出 knowledge/surveys/<topic>/ 下的分阶段产物：scope.md → sources.md → queries.md →
+      candidates.md → landscape.md → papers.md → report.md；不要一次从检索写到成文。
+      结论必须能回溯到具体论文；网页资料只进 sources.md，不冒充 bib 引用。
 
       ### 2) 文献检索（技能 literature-retrieval）
       检索 → 筛选 → 精读 → 笔记 → 引用，四步都要留痕：
@@ -236,7 +247,7 @@
 - id: vault-study
   name: 'dsh-scientist/vault-study.mjs'
 
-# 斜杠命令：7 个约定 loop 的入口（/survey /paper /derive /write /review /status /study-init）。
+# 斜杠命令：12 个入口（/survey 状态 + 5 个 survey 阶段 + /paper /derive /write /review /status /study-init）。
 # 命令用代码钉死入口与出口契约，中段交给模型；不敲命令时本行不参与任何流程。
 - id: vault-commands
   name: 'dsh-scientist/vault-commands.mjs'

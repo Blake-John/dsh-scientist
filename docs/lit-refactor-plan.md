@@ -255,7 +255,7 @@ scientist-preset/
 |---|---|
 | `literature-retrieval` | `search_papers` → `lit_search`；`download_with_fallback` → `lit_pdf`；新增 `lit_bib` 生成书目的步骤；检索式记录里加"各源状态" |
 | `pdf-reading` | 去掉对 MCP `read_*_paper` 的依赖，改为 `lit_pdf` 取文件 → `pymupdf4llm`；保留渲染与表格核对 |
-| `domain-survey` | 检索工具名替换；源选择建议更新（默认 crossref+arxiv，OpenAlex 可用时再开） |
+| `domain-survey` | 0.6.0 起拆为 scan/scholar/map/papers/report 五阶段；检索工具名替换；源选择建议更新（默认 crossref+arxiv，OpenAlex 可用时再开） |
 | `cite-check`（脚本） | 增加 `--from-bib` 往返校验：`lit_bib` 生成的条目必须能通过 `cite-check` |
 
 ## 7. 实施步骤

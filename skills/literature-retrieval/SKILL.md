@@ -96,6 +96,16 @@ knowledge/literature/
 - 生成后跑 `cite-check --root .` 校验（必填字段、DOI 与 Crossref 一致、正文引用与 bib 双向对应）。
 - 报告里每个引用编号都能在 `references.bib` 里找到对应条目，且笔记存在。
 
+## 与分阶段调研的衔接
+
+- `/survey-scholar`：把检索式写进 `knowledge/surveys/<topic>/queries.md`，候选论文写
+  `candidates.md`（≥12 个 citekey，全部进 bib）；只做检索与候选，不做流派聚类。
+- `/survey-papers`：在 `candidates.md` 基础上做论文总述表与「深读队列」
+  （`knowledge/surveys/<topic>/papers.md`）；不要在这一步读全文。
+- 深读队列里的每一篇用 `/paper <citekey>` 精读，笔记落
+  `knowledge/literature/notes/<citekey>.md`；`papers` 阶段不批量读全文。
+- 网页资料只进 `sources.md`，不进 `references.bib`；报告里的学术论断仍用 bib citekey。
+
 ## 常见失败
 
 - **检索式不记录**：两周后无法复现"当时怎么找的"。

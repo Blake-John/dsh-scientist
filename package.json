@@ -1,7 +1,7 @@
 {
   "name": "dsh-scientist",
-  "version": "0.5.0",
-  "description": "科学家模式 — 面向数理/物理工程材料/AI 计算科学的 DSH agent preset：领域调研、文献检索（lit_* 4 个原生工具）、专业推导（sympy + pint + uncertainties + LaTeX）、出图与统计规范、版本化工件与溯源。",
+  "version": "0.6.0",
+  "description": "科学家模式 — 面向数理/物理工程材料/AI 计算科学的 DSH agent preset：领域调研（分阶段 scan→scholar→map→papers→report）、文献检索（lit_* 4 个原生工具）、专业推导（sympy + pint + uncertainties + LaTeX）、出图与统计规范、版本化工件与溯源。",
   "type": "module",
   "license": "Apache-2.0",
   "keywords": [
@@ -55,7 +55,8 @@
     "vault-loop-core.mjs",
     "vault-loop-tools.mjs",
     "vault-record.mjs",
-    "vault-study.mjs"
+    "vault-study.mjs",
+    "vault-survey.mjs"
   ],
   "dsh": {
     "bundle": {
@@ -71,7 +72,7 @@
   "scripts": {
     "build:patch": "node scripts/build-patch.mjs",
     "lit": "node scripts/lit.mjs",
-    "check": "node scripts/build-patch.mjs --check && node scripts/check-patch.mjs && node scripts/test-skills-provider.mjs && node scripts/test-lit-core.mjs && node scripts/test-lit-tools.mjs && node scripts/test-pdf-tools.mjs && node scripts/test-lit-lib.mjs && node scripts/test-vault-core.mjs && node scripts/test-vault-record.mjs && node scripts/test-vault-study.mjs && node scripts/test-vault-cli.mjs && node scripts/test-cite-check-deep.mjs && node scripts/test-vault-loop.mjs && node scripts/test-vault-commands.mjs && node scripts/test-vault-enforce.mjs && node scripts/test-vault-loop-tools.mjs && python3 scripts/validate.py",
+    "check": "node scripts/build-patch.mjs --check && node scripts/check-patch.mjs && node scripts/test-skills-provider.mjs && node scripts/test-lit-core.mjs && node scripts/test-lit-tools.mjs && node scripts/test-pdf-tools.mjs && node scripts/test-lit-lib.mjs && node scripts/test-vault-core.mjs && node scripts/test-vault-record.mjs && node scripts/test-vault-study.mjs && node scripts/test-vault-cli.mjs && node scripts/test-cite-check-deep.mjs && node scripts/test-vault-loop.mjs && node scripts/test-vault-survey.mjs && node scripts/test-vault-commands.mjs && node scripts/test-vault-enforce.mjs && node scripts/test-vault-loop-tools.mjs && python3 scripts/validate.py",
     "check:live": "node scripts/test-lit-tools.mjs --live",
     "prepublishOnly": "npm run check"
   },

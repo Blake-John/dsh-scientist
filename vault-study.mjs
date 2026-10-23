@@ -22,6 +22,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   appendJsonl,
+  bindAgentCwd,
   nowISO,
   optInt,
   optStr,
@@ -334,7 +335,7 @@ const BIB_HEADER = `% references.bib —— 由 lit_bib 追加；也可手工维
 
 const DIR_README = {
   'codes/README.md': '# codes\n\n可复用代码（模块 / notebooks / scripts / tests）。实验专用的一次性脚本放 `experiments/<id>/code/`，成熟后提升到这里。\n',
-  'knowledge/README.md': '# knowledge\n\n学到的东西：`surveys/` 调研、`literature/` 论文与笔记、`reports/` 阶段总结、`logs/` 研究日志、`findings/` 原子发现。\n',
+  'knowledge/README.md': '# knowledge\n\n学到的东西：`surveys/` 分阶段调研（survey.json + scope/sources/queries/candidates/landscape/papers/report）、`literature/` 论文与笔记、`reports/` 阶段总结、`logs/` 研究日志、`findings/` 原子发现。\n',
   'research/README.md': '# research\n\n当前研究状态（插件落地）：`study.json` 唯一真相、`INDEX.md` 项目地图、`loops/` 运行态、`records/` 工件登记、`reviews/` 评审长文、`decisions/` 决策长文。\n',
   'data/README.md': '# data\n\n原始/中间/处理后/外部数据；默认不入 git。新增数据登记到 `manifest.tsv`（来源、命令、sha256、许可、版本）。\n',
   'experiments/README.md': '# experiments\n\n每次实验一个目录：`design.md`、`config.yaml`、`run.sh`、`logs/`、`results/`；推导放 `derivations/<id>/`。\n',
@@ -441,7 +442,7 @@ export async function writeRootReadme(root, study) {
     '| `scratch/` | 临时文件（不入 git） |',
     '',
     '## 接手',
-    '新会话先跑 `/status`；调研 `/survey`；精读 `/paper`；推导 `/derive`；成文 `/write`；评审 `/review`。',
+    '新会话先跑 `/status`；调研从 `/survey-scan` 开始（scan→scholar→map→papers→report）；精读 `/paper`；推导 `/derive`；成文 `/write`；评审 `/review`。',
     END,
   ].join('\n')
   const file = withinRoot(root, 'README.md')
@@ -503,7 +504,7 @@ export async function ensureStudy(root, { title, question, autoCreated = false, 
 // ── 1. study_init ───────────────────────────────────────────────────────────
 
 async function cmdInit(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   return await withFileLock(lockPath(root), {}, async () => {
     const existing = await readJson(studyPath(root), null)
     if (existing) {
@@ -548,7 +549,7 @@ async function cmdInit(args, exec) {
 // ── 2. study_state ──────────────────────────────────────────────────────────
 
 async function cmdState(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const study = await loadStudy(root)
   const recordsIndex = await readJson(join(root, 'research', 'records', 'index.json'), { records: [] })
   const recordNames = new Set((recordsIndex.records ?? []).map((r) => r.slug))
@@ -654,7 +655,7 @@ async function cmdState(args, exec) {
 // ── 3. study_hypothesis ────────────────────────────────────────────────────
 
 async function cmdHypothesis(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const text = requireStr(args, 'text')
   const citekeys = Array.isArray(args.citekeys) ? args.citekeys.map(String) : []
   return await withFileLock(lockPath(root), {}, async () => {
@@ -730,7 +731,7 @@ async function scaffoldExperiment(root, experiment) {
 }
 
 async function cmdExperiment(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const title = requireStr(args, 'title')
   const hypothesisId = optStr(args, 'hypothesis')
   const plan = Array.isArray(args.plan) ? args.plan.map(String) : optStr(args, 'plan') ? [optStr(args, 'plan')] : []
@@ -793,7 +794,7 @@ async function cmdExperiment(args, exec) {
 // ── 5. study_finding ───────────────────────────────────────────────────────
 
 async function cmdFinding(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const experimentId = requireStr(args, 'experiment')
   const finding = optStr(args, 'finding')
   const conclusion = optStr(args, 'conclusion')
@@ -860,7 +861,7 @@ async function cmdFinding(args, exec) {
 // ── 6. study_decision ──────────────────────────────────────────────────────
 
 async function cmdDecision(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const question = requireStr(args, 'question')
   const chosen = requireStr(args, 'chosen')
   const rationale = requireStr(args, 'rationale')
@@ -900,7 +901,7 @@ async function cmdDecision(args, exec) {
 // ── 7. study_review ────────────────────────────────────────────────────────
 
 async function cmdReview(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const target = requireStr(args, 'target')
   const verdict = requireStr(args, 'verdict')
   if (!VERDICTS.includes(verdict)) throw vaultErr('ERR_BAD_ARGS', `verdict 必须是 ${VERDICTS.join(' / ')}`)
@@ -973,7 +974,7 @@ async function cmdReview(args, exec) {
 // ── 8. study_phase ─────────────────────────────────────────────────────────
 
 async function cmdPhase(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const phase = requireStr(args, 'phase')
   const reason = optStr(args, 'reason')
   return await withFileLock(lockPath(root), {}, async () => {
@@ -997,7 +998,7 @@ async function cmdPhase(args, exec) {
 // ── 9. study_claim ────────────────────────────────────────────────────────
 
 async function cmdClaim(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const status = optStr(args, 'status', 'unverified')
   if (!CLAIM_STATUSES.includes(status)) throw vaultErr('ERR_BAD_ARGS', `status 必须是 ${CLAIM_STATUSES.join(' / ')}`)
   const citekeys = Array.isArray(args.citekeys) ? args.citekeys.map(String) : []
@@ -1066,7 +1067,8 @@ async function cmdClaim(args, exec) {
 const ROOT_PROP = { root: { type: 'string' } }
 
 export function apply(ctx) {
-  ctx.tools.register(
+  const register = (def) => ctx.tools.register(bindAgentCwd(ctx, def))
+  register(
     tool({
       name: 'study_init',
       description: '初始化研究项目：创建 research/study.json 与 records/reviews/envs 目录。幂等——已存在时只回报现状。研究循环的第一步。',
@@ -1080,7 +1082,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_state',
       description:
@@ -1099,7 +1101,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_hypothesis',
       description:
@@ -1121,7 +1123,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_experiment',
       description:
@@ -1147,7 +1149,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_finding',
       description:
@@ -1169,7 +1171,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_decision',
       description:
@@ -1193,7 +1195,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_review',
       description:
@@ -1217,7 +1219,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_claim',
       description:
@@ -1239,7 +1241,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'study_phase',
       description:

@@ -10,10 +10,22 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { readJson, resolveRoot, slugify } from './vault-core.mjs'
-import { createLoop, listLoops, readLoop, suspendEnforcement } from './vault-loop-core.mjs'
+import { agentCwd, readJson, resolveRoot, slugify, switchAgentCwd } from './vault-core.mjs'
+import { abortLoop, createLoop, listLoops, readLoop, setLoopSurvey, suspendEnforcement } from './vault-loop-core.mjs'
 import { ensureStudy } from './vault-study.mjs'
 import { projectLayout } from './project-layout.mjs'
+import {
+  STAGE_META,
+  SURVEY_STAGES,
+  beginStage,
+  ensureSurveyState,
+  getSurveyState,
+  listSurveyStates,
+  nextStage,
+  renderSurveyStatus,
+  stageCommand,
+  surveySlug,
+} from './vault-survey.mjs'
 
 export const name = 'dsh-scientist-vault-commands'
 export const inject = ['commands']
@@ -53,14 +65,13 @@ export function parseInput(raw) {
   return { words, flags }
 }
 
-/** 会话的工作目录（命令没有 exec，只能从 session header 拿） */
-export function sessionCwd(ctx, agent) {
-  try {
-    const sessions = ctx?.get?.('sessions')
-    return sessions?.get?.(agent?.id)?.cwd ?? process.cwd()
-  } catch {
-    return process.cwd()
-  }
+/**
+ * 会话的工作目录（命令没有 exec）。
+ * 用 workingDirectory 服务而不是 session.cwd：Session 只有 header.cwd，
+ * 且模型 `cd` 后的当前目录由 workingDirectory 投影维护。
+ */
+export async function sessionCwd(ctx, agent) {
+  return await agentCwd(ctx, agent)
 }
 
 const today = () => {
@@ -76,35 +87,208 @@ const today = () => {
  *   plan(arg) → { requires[], checks[], workMin, maxNudges, artifacts[], mustContain[], steps[], skill }
  * requires/checks 使用 vault-loop-core 的校验 DSL。
  */
-const LOOP_COMMANDS = [
+const stagePaths = (paths, arg) => {
+  const slug = surveySlug(arg)
+  const dir = paths.version === 'v2' ? `${paths.surveys}/${slug}` : `${paths.reports}/survey-${slug}`
+  return { slug, dir }
+}
+
+const priorArtifacts = (stage, dir) =>
+  SURVEY_STAGES.slice(0, SURVEY_STAGES.indexOf(stage))
+    .flatMap((item) => STAGE_META[item].artifacts.map((artifact) => `${dir}/${artifact}`))
+
+const nextCommandFor = (stage, arg) => {
+  const next = STAGE_META[stage].next
+  return next ? `/${stageCommand(next)} "${arg}"` : null
+}
+
+/** 5 个分阶段调研命令：每次只做一个阶段 */
+const SURVEY_STAGE_COMMANDS = [
   {
-    name: 'survey',
-    description: '领域调研闭环：边界→流派→时间线→对比→gap→切入点，产出 landscape 报告',
-    usage: '<方向> [--no-init] [--dry-run]',
+    name: 'survey-scan',
+    stage: 'scan',
+    description: '分阶段调研 1/5：定框 + 网络调研，产出 scope.md 与 sources.md',
+    usage: '<主题> [--root DIR] [--no-init] [--force] [--dry-run]',
     skill: 'domain-survey',
-    maxNudges: 3,
+    maxNudges: 2,
+    mutexByArg: true,
     plan(arg, { paths }) {
-      const slug = slugify(arg, 'topic')
-      const artifact = paths.version === 'v2'
-        ? `${paths.surveys}/${slug}/report.md`
-        : `${paths.reports}/landscape-${slug}.md`
+      const { dir } = stagePaths(paths, arg)
       return {
-        requires: [`file-since-open:${artifact}`, `min-citations:${artifact}:5`],
-        checks: [`contains:${artifact}:gap`, `markdown-table:${artifact}`, `citations-bib:${artifact}`],
-        workMin: 3,
-        artifacts: [artifact],
-        mustContain: ['≥5 条 key 式引用（[@key] 或 \\cite{key}）', '方法对比表（Markdown 表格）', 'gap 清单'],
+        stage: 'scan',
+        position: 1,
+        requires: [`file-since-open:${dir}/scope.md`, `file-since-open:${dir}/sources.md`],
+        checks: [
+          `contains:${dir}/scope.md:决策问题|边界|检索式`,
+          `markdown-table:${dir}/sources.md`,
+          `contains:${dir}/sources.md:URL|可信度`,
+          `min-links:${dir}/sources.md:8`,
+        ],
+        workMin: 2,
+        artifacts: [`${dir}/scope.md`, `${dir}/sources.md`],
+        mustContain: ['决策问题/边界/检索式', '≥8 个不同 URL 的来源表', '每条来源含类型/日期/可信度/用途'],
+        previousArtifacts: [],
+        nextCommand: nextCommandFor('scan', arg),
+        forbidden: ['不要写 landscape.md / candidates.md / papers.md / report.md', '不要读论文全文', '不要把网页硬写成 references.bib 条目'],
         steps: [
-          '界定方向边界与子问题',
-          '梳理流派与代表工作（每条带引用）',
-          `用 lit_bib 把引用的文献落到 ${paths.bib}（报告里的 citekey 必须能在 bib 找到）`,
-          '时间线与方法/指标对比（Markdown 表格）',
-          '开放问题与 gap 清单',
-          '最小切入点建议',
+          `写 ${dir}/scope.md：研究对象、要回答的决策问题、学科边界、时间窗、纳入/排除标准、3-5 组检索式。`,
+          '用 web_search 做宽检索（领域词、同义词、旧称、英文/中文），必要时 read_page 读关键页面。',
+          `把每个网页写进 ${dir}/sources.md 表：标题、URL、类型（lab/blog/news/benchmark/官方文档）、日期、可信度、用途/关键结论。`,
+          '标出网络资料的覆盖盲区（哪些子问题只能靠论文），留给 scholar 阶段。',
         ],
       }
     },
   },
+  {
+    name: 'survey-scholar',
+    stage: 'scholar',
+    description: '分阶段调研 2/5：学术检索与候选论文，产出 queries.md 与 candidates.md',
+    usage: '<主题> [--root DIR] [--no-init] [--force] [--dry-run]',
+    skill: 'domain-survey',
+    maxNudges: 3,
+    mutexByArg: true,
+    plan(arg, { paths }) {
+      const { dir } = stagePaths(paths, arg)
+      return {
+        stage: 'scholar',
+        position: 2,
+        requires: [`file-since-open:${dir}/queries.md`, `file-since-open:${dir}/candidates.md`],
+        checks: [
+          `markdown-table:${dir}/queries.md`,
+          `contains-any:${dir}/queries.md:Crossref|arXiv|PubMed|Europe PMC`,
+          `markdown-table:${dir}/candidates.md`,
+          `min-citekeys:${dir}/candidates.md:12`,
+          `citations-bib:${dir}/candidates.md`,
+        ],
+        workMin: 3,
+        artifacts: [`${dir}/queries.md`, `${dir}/candidates.md`],
+        mustContain: ['检索式表（源/检索式/命中数/日期）', '≥12 篇候选论文', '每篇含 citekey/年份/venue/类型/入选理由'],
+        previousArtifacts: priorArtifacts('scholar', dir),
+        nextCommand: nextCommandFor('scholar', arg),
+        forbidden: ['不要做流派聚类（留给 map）', '不要写最终报告', '不要逐篇精读全文'],
+        steps: [
+          `读 scope.md 与 sources.md，把检索式写成 ${dir}/queries.md 表（源/检索式/命中数/日期/备注）。`,
+          '用 lit_search 多源并发（Crossref/arXiv/PubMed/Europe PMC），至少两轮：宽检索找综述/高被引，窄检索找各流派代表作。',
+          `用 lit_doi 核对元数据，lit_bib 把候选论文落到 ${paths.bib}。`,
+          `写 ${dir}/candidates.md：citekey、年份、venue、类型（survey/method/baseline/dataset）、被引、为什么入选。`,
+        ],
+      }
+    },
+  },
+  {
+    name: 'survey-map',
+    stage: 'map',
+    description: '分阶段调研 3/5：流派/时间线/对比表/gap，产出 landscape.md',
+    usage: '<主题> [--root DIR] [--no-init] [--force] [--dry-run]',
+    skill: 'domain-survey',
+    maxNudges: 3,
+    mutexByArg: true,
+    plan(arg, { paths }) {
+      const { dir } = stagePaths(paths, arg)
+      return {
+        stage: 'map',
+        position: 3,
+        requires: [`file-since-open:${dir}/landscape.md`],
+        checks: [
+          `min-citations:${dir}/landscape.md:5`,
+          `markdown-table:${dir}/landscape.md`,
+          `contains:${dir}/landscape.md:gap`,
+          `citations-bib:${dir}/landscape.md`,
+        ],
+        workMin: 3,
+        artifacts: [`${dir}/landscape.md`],
+        mustContain: ['流派地图（假设/贡献/代价/代表工作）', '时间线', '方法对比表', 'gap 三类判定'],
+        previousArtifacts: priorArtifacts('map', dir),
+        nextCommand: nextCommandFor('map', arg),
+        forbidden: ['不要逐篇精读', '不要写最终报告', '不要重新做大规模检索（除非发现明显缺口，记到 queries.md）'],
+        steps: [
+          '读 candidates.md 与 sources.md。',
+          '按方法家族聚类成流派：核心假设/解决什么/代价/谁在推进。',
+          '画时间线（转折点 + 引用）与方法/指标对比表。',
+          '列 gap 候选并三问：有人做过吗/没价值还是没条件/最小切入点。',
+          `写 ${dir}/landscape.md。`,
+        ],
+      }
+    },
+  },
+  {
+    name: 'survey-papers',
+    stage: 'papers',
+    description: '分阶段调研 4/5：论文总述、纳入/排除与深读队列，产出 papers.md',
+    usage: '<主题> [--root DIR] [--no-init] [--force] [--dry-run]',
+    skill: 'domain-survey',
+    maxNudges: 2,
+    mutexByArg: true,
+    plan(arg, { paths }) {
+      const { dir } = stagePaths(paths, arg)
+      return {
+        stage: 'papers',
+        position: 4,
+        requires: [`file-since-open:${dir}/papers.md`],
+        checks: [
+          `markdown-table:${dir}/papers.md`,
+          `min-citekeys:${dir}/papers.md:10`,
+          `citations-bib:${dir}/papers.md`,
+          `contains:${dir}/papers.md:纳入|排除`,
+          `contains:${dir}/papers.md:深读`,
+        ],
+        workMin: 2,
+        artifacts: [`${dir}/papers.md`],
+        mustContain: ['≥10 篇论文总述表', '纳入/排除理由', '深读队列（citekey + 优先级 + 理由）'],
+        previousArtifacts: priorArtifacts('papers', dir),
+        nextCommand: nextCommandFor('papers', arg),
+        forbidden: ['不要读全文', '不要写 report.md', '不要重新做流派分析'],
+        steps: [
+          '读 landscape.md 与 candidates.md。',
+          `筛出要纳入的论文，写 ${dir}/papers.md 表：citekey/年份/venue/角色/一句话贡献/纳入或排除/深读优先级/理由。`,
+          '建“深读队列”：选 5-10 篇，标 P0/P1/P2，说明为什么值得读。',
+          '确保 citekey 都在 bib；不要读全文。',
+          '下一步把队列交给 /paper：/paper <citekey>。',
+        ],
+      }
+    },
+  },
+  {
+    name: 'survey-report',
+    stage: 'report',
+    description: '分阶段调研 5/5：综合已有产物写 report.md',
+    usage: '<主题> [--root DIR] [--no-init] [--force] [--dry-run]',
+    skill: 'domain-survey',
+    maxNudges: 3,
+    mutexByArg: true,
+    plan(arg, { paths }) {
+      const { dir } = stagePaths(paths, arg)
+      const artifact = `${dir}/report.md`
+      return {
+        stage: 'report',
+        position: 5,
+        requires: [`file-since-open:${artifact}`, `min-citations:${artifact}:5`],
+        checks: [
+          `markdown-table:${artifact}`,
+          `contains:${artifact}:gap`,
+          `contains:${artifact}:不确定性`,
+          `citations-bib:${artifact}`,
+        ],
+        workMin: 3,
+        artifacts: [artifact],
+        mustContain: ['一句话结论', '流派地图与时间线', '方法对比表', 'gap 三类判定', '最小切入点', '不确定性声明'],
+        previousArtifacts: priorArtifacts('report', dir),
+        nextCommand: null,
+        forbidden: ['不要重新检索', '不要新增 bib 里没有的 citekey', '不要把 sources.md 的网页伪装成学术引用'],
+        steps: [
+          '读 scope/sources/queries/candidates/landscape/papers。',
+          `写 ${artifact}：一句话结论、边界与决策问题、流派地图、时间线、对比表、gap 三类、最小切入点、不确定性。`,
+          '引用已有 citekey；不重新检索；缺证据标“作者判断/待补”。',
+          '把 sources.md 的网页资料标注为“见 sources.md”，不要伪造 bib。',
+          '完成后 loop_close()。',
+        ],
+      }
+    },
+  },
+]
+
+const LOOP_COMMANDS = [
+  ...SURVEY_STAGE_COMMANDS,
   {
     name: 'paper',
     description: '精读一篇目标论文：取全文→画像→分节读→方法与结果→局限→笔记与 bib',
@@ -222,11 +406,27 @@ const LOOP_COMMANDS = [
   },
 ]
 
+const STAGE_SPECS = Object.fromEntries(SURVEY_STAGE_COMMANDS.map((spec) => [spec.stage, spec]))
+
 // ── prompt 构造（C 方案：契约自包含 + 方法引用技能）────────────────────────
 
 export function buildPrompt(spec, plan, loopId, arg) {
   const lines = [`/${spec.name} 已启动 · loop ${loopId}`, '']
   if (arg) lines.push(`目标：${arg}`, '')
+  if (plan.stage) {
+    lines.push('## 本阶段边界')
+    lines.push(`- 本阶段只做 \`${plan.stage}\`（${STAGE_META[plan.stage]?.title ?? plan.stage}）；不要提前做后续阶段。`)
+    if (plan.previousArtifacts?.length) {
+      lines.push(`- 前序产物：${plan.previousArtifacts.join('、')}。先读它们，不要重做。`)
+    }
+    if (plan.nextCommand) {
+      lines.push(`- 完成后调用 loop_close()；系统会标记本阶段完成，下一步：\`${plan.nextCommand}\`。`)
+    } else {
+      lines.push('- 完成后调用 loop_close()；这是最后一个阶段。')
+    }
+    if (plan.forbidden?.length) lines.push(`- 禁止：${plan.forbidden.join('；')}`)
+    lines.push('')
+  }
   lines.push('## 出口契约（不满足不能关闭）')
   lines.push(`- 产物：${plan.artifacts.join('、')}`)
   if (plan.mustContain?.length) lines.push(`- 必须含：${plan.mustContain.join('；')}`)
@@ -284,6 +484,16 @@ async function renderStatus(root) {
     for (const loop of stalled) lines.push(`  ${loop.id}  → /status --abort ${loop.id}，或 loop_note 复活 / loop_status(resume=true)`)
   }
 
+  const layout = await projectLayout(root)
+  const surveys = await listSurveyStates(root, layout)
+  if (surveys.length) {
+    lines.push('', '分阶段调研')
+    for (const state of surveys) {
+      const next = nextStage(state)
+      lines.push(`  ${state.slug}  ${state.legacy ? 'legacy' : next ? `下一阶段 ${next}` : '已完成'}`)
+    }
+  }
+
   if (study) {
     const todos = []
     const noCite = (study.hypotheses ?? []).filter((h) => !(h.citekeys ?? []).length)
@@ -314,8 +524,17 @@ function makeLoopHandler(ctx, spec) {
     const arg = words.join(' ').trim()
     if (!arg && !spec.argOptional) return { kind: 'error', text: `用法：/${spec.name} ${spec.usage}` }
 
-    const cwd = sessionCwd(ctx, invocation.agent)
-    const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd)
+    const cwd = await sessionCwd(ctx, invocation.agent)
+    const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd, cwd)
+    // 命令的目标就是项目根：把会话工作区切过去，后续 write/bash/fs 工具才落在同一处。
+    // --dry-run 只预览，不产生副作用。
+    if (!flags['dry-run']) {
+      try {
+        await switchAgentCwd(ctx, invocation.agent, root)
+      } catch (error) {
+        return { kind: 'error', text: `无法切换会话工作区到 ${root}：${error?.message ?? error}` }
+      }
+    }
 
     // 入口：项目（可自动创建）
     let created = false
@@ -332,8 +551,10 @@ function makeLoopHandler(ctx, spec) {
       if (!existing) return { kind: 'error', text: '没有研究项目，且指定了 --no-init；先 /study-init' }
     }
 
-    // 同类 loop 互斥
-    const sameKind = (await listLoops(root, { status: 'running' })).filter((l) => l.kind === spec.name)
+    // 同类 loop 互斥（分阶段调研按主题互斥，允许不同主题并行）
+    const sameKind = (await listLoops(root, { status: 'running' })).filter(
+      (l) => l.kind === spec.name && (!spec.mutexByArg || l.arg === arg),
+    )
     if (sameKind.length) {
       return {
         kind: 'error',
@@ -345,6 +566,56 @@ function makeLoopHandler(ctx, spec) {
     const plan = spec.plan(arg, { paths: layout, flags })
     if (flags['dry-run']) {
       return { kind: 'success', text: buildPrompt(spec, plan, '(dry-run)', arg) }
+    }
+
+    // 分阶段调研：先建 loop（不带 survey 元数据），阶段校验通过后再挂元数据，
+    // 避免阶段顺序错误时把 loop 记成“阶段已开始”。
+    if (spec.stage) {
+      const slug = surveySlug(arg)
+      try {
+        await ensureSurveyState(root, layout, slug, arg)
+      } catch (error) {
+        return { kind: 'error', text: error?.message ?? String(error) }
+      }
+
+      const loop = await createLoop(root, {
+        kind: spec.name,
+        arg,
+        requires: plan.requires,
+        checks: plan.checks,
+        workMin: plan.workMin,
+        maxNudges: spec.maxNudges,
+        skill: spec.skill,
+        survey: null,
+      })
+
+      try {
+        await beginStage(root, layout, slug, spec.stage, {
+          force: Boolean(flags.force),
+          loopId: loop.id,
+          topic: arg,
+        })
+      } catch (error) {
+        await abortLoop(root, loop.id, '阶段未开始').catch(() => {})
+        const extra = error?.nextCommand ? `\n下一步：${error.nextCommand}` : ''
+        return { kind: 'error', text: `${error?.message ?? String(error)}${extra}` }
+      }
+
+      try {
+        await setLoopSurvey(root, loop.id, { slug, stage: spec.stage })
+      } catch (error) {
+        await abortLoop(root, loop.id, '无法挂载 survey 元数据').catch(() => {})
+        return { kind: 'error', text: `无法记录 survey 阶段：${error?.message ?? String(error)}` }
+      }
+
+      invocation.agent.followup(userMessage(buildPrompt(spec, plan, loop.id, arg)))
+
+      const head = created ? `已自动创建研究项目「${arg}」\n` : ''
+      const next = plan.nextCommand ? `\n下一步：${plan.nextCommand}` : '\n这是最后一个阶段。'
+      return {
+        kind: 'success',
+        text: `${head}已启动 /${spec.name}（loop ${loop.id}）\n阶段 ${spec.stage} · 产物：${plan.artifacts.join('、')}${next}`,
+      }
     }
 
     const loop = await createLoop(root, {
@@ -378,6 +649,62 @@ export function apply(ctx) {
       })
     }
 
+    // /survey：状态页 + --next 执行下一阶段（不创建 loop）
+    commandCtx.commands.register({
+      name: 'survey',
+      description: '查看分阶段调研进度；--next 执行下一阶段（scan→scholar→map→papers→report）',
+      input: { hint: '[主题] [--next] [--force] [--json] [--root DIR]' },
+      handler: async (invocation) => {
+        const { words, flags } = parseInput(invocation.rawInput)
+        const cwd = await sessionCwd(ctx, invocation.agent)
+        const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd, cwd)
+        const layout = await projectLayout(root)
+        const topic = words.join(' ').trim()
+
+        if (!topic) {
+          const states = await listSurveyStates(root, layout)
+          if (!states.length) {
+            return { kind: 'success', text: '没有分阶段调研。\n开始：/survey-scan "主题"' }
+          }
+          const lines = ['分阶段调研：']
+          for (const state of states) {
+            const next = nextStage(state)
+            lines.push(`- ${state.slug} · ${state.legacy ? 'legacy' : next ? `下一阶段 ${next}` : '已完成'} · ${state.updatedAt ?? ''}`)
+          }
+          return { kind: 'success', text: lines.join('\n') }
+        }
+
+        const slug = surveySlug(topic)
+        const state = await getSurveyState(root, layout, slug, topic)
+
+        if (flags.next) {
+          const stage = nextStage(state) ?? (state?.legacy && flags.force ? 'scan' : null)
+          if (!stage) {
+            return {
+              kind: 'success',
+              text: `${renderSurveyStatus(state, { topic, slug, paths: layout })}\n\n没有待执行阶段。`,
+            }
+          }
+          const spec = STAGE_SPECS[stage]
+          if (!spec) return { kind: 'error', text: `内部错误：没有阶段命令 ${stage}` }
+          const extras = [
+            typeof flags.root === 'string' ? `--root "${flags.root}"` : '',
+            flags['no-init'] ? '--no-init' : '',
+            flags.force ? '--force' : '',
+            flags['dry-run'] ? '--dry-run' : '',
+          ].filter(Boolean).join(' ')
+          const rawInput = `${topic}${extras ? ` ${extras}` : ''}`
+          return await makeLoopHandler(ctx, spec)({ ...invocation, rawInput })
+        }
+
+        if (flags.json) {
+          return { kind: 'success', text: JSON.stringify(state, null, 2) }
+        }
+
+        return { kind: 'success', text: renderSurveyStatus(state, { topic, slug, paths: layout }) }
+      },
+    })
+
     // /study-init：不创建 loop，只建/更新项目
     commandCtx.commands.register({
       name: 'study-init',
@@ -385,8 +712,13 @@ export function apply(ctx) {
       input: { hint: '[标题] [--question "…"]' },
       handler: async (invocation) => {
         const { words, flags } = parseInput(invocation.rawInput)
-        const cwd = sessionCwd(ctx, invocation.agent)
-        const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd)
+        const cwd = await sessionCwd(ctx, invocation.agent)
+        const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd, cwd)
+        try {
+          await switchAgentCwd(ctx, invocation.agent, root)
+        } catch (error) {
+          return { kind: 'error', text: `无法切换会话工作区到 ${root}：${error?.message ?? error}` }
+        }
         const title = words.join(' ').trim() || undefined
         const question = typeof flags.question === 'string' ? flags.question : undefined
         const { study, created } = await ensureStudy(root, {
@@ -403,14 +735,14 @@ export function apply(ctx) {
         invocation.agent.followup(
           userMessage(
             created
-              ? `（/study-init 已完成）研究「${study.title}」已建立，目录与脚手架已按约定创建好（含 literature/ reports/ derivations/ experiments/ figures/ manuscript/ analyses/ data/ envs/ reviews/）。用一两句话向用户确认，并建议下一步（/survey <方向> 或 study_hypothesis）。不要逐条罗列目录。`
+              ? `（/study-init 已完成）研究「${study.title}」已建立，目录与脚手架已按约定创建好（codes/ knowledge/ research/ data/ experiments/ outputs/ envs/ scratch/）。用一两句话向用户确认，并建议下一步（/survey-scan <主题> 或 study_hypothesis）。不要逐条罗列目录。`
               : `（/study-init 已更新）标题「${study.title}」，核心问题：${study.question?.text || '（未设）'}。用一句话确认。`,
           ),
         )
         return {
           kind: 'success',
           text: created
-            ? `✓ 已创建研究「${study.title}」\n  清单 research/study.json · 下一步 /survey 或 study_hypothesis`
+            ? `✓ 已创建研究「${study.title}」\n  清单 research/study.json · 下一步 /survey-scan 或 study_hypothesis`
             : `✓ 已更新研究「${study.title}」\n  核心问题：${study.question?.text || '（未设）'}`,
         }
       },
@@ -423,8 +755,8 @@ export function apply(ctx) {
       input: { hint: '[loop-id] [--brief] [--abort <id>] [--json]' },
       handler: async (invocation) => {
         const { words, flags } = parseInput(invocation.rawInput)
-        const cwd = sessionCwd(ctx, invocation.agent)
-        const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd)
+        const cwd = await sessionCwd(ctx, invocation.agent)
+        const root = await resolveRoot(typeof flags.root === 'string' ? flags.root : cwd, cwd)
 
         // 逃生舱：/status --abort <id>
         if (typeof flags.abort === 'string') {
@@ -462,4 +794,4 @@ export function apply(ctx) {
   }, 'vault-commands')
 }
 
-export const __test__ = { LOOP_COMMANDS, buildPrompt, parseInput, renderStatus, makeLoopHandler }
+export const __test__ = { LOOP_COMMANDS, SURVEY_STAGE_COMMANDS, STAGE_SPECS, buildPrompt, parseInput, renderStatus, makeLoopHandler }

@@ -14,6 +14,7 @@ import { readdir, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { bindAgentCwd } from './vault-core.mjs'
 
 export const name = 'dsh-scientist-pdf'
 export const inject = ['tools']
@@ -40,6 +41,13 @@ const tool = ({ name, description, parameters, presentTitle, execute }) => ({
 })
 
 const resolvePdf = (root, path) => (isAbsolute(path) ? path : resolve(root, path))
+
+/** 项目根：显式 root 优先；相对路径按会话工作区解析。 */
+const rootOf = (args, exec) => {
+  const base = exec?.cwd ?? process.cwd()
+  const raw = typeof args.root === 'string' && args.root ? args.root : base
+  return isAbsolute(raw) ? raw : resolve(base, raw)
+}
 
 const hasBinary = async (bin) => {
   try {
@@ -93,8 +101,9 @@ const parsePages = (raw) => {
 }
 
 export function apply(ctx) {
+  const register = (def) => ctx.tools.register(bindAgentCwd(ctx, def))
   // ── 画像 ──────────────────────────────────────────────────────────────────
-  ctx.tools.register(
+  register(
     tool({
       name: 'pdf_outline',
       description:
@@ -105,13 +114,13 @@ export function apply(ctx) {
         additionalProperties: false,
         properties: {
           path: { type: 'string', description: 'PDF 路径（相对项目根或绝对路径）' },
-          root: { type: 'string', description: '项目根目录，默认进程工作目录' },
+          root: { type: 'string', description: '项目根目录，默认会话工作区' },
         },
         required: ['path'],
       },
       presentTitle: 'PDF 页面画像',
-      async execute(args) {
-        const pdf = resolvePdf(args.root ?? process.cwd(), args.path)
+      async execute(args, exec) {
+        const pdf = resolvePdf(rootOf(args, exec), args.path)
         if (!existsSync(pdf)) throw new Error(`文件不存在：${pdf}`)
         const data = await runExtractor('outline', pdf)
 
@@ -152,7 +161,7 @@ export function apply(ctx) {
   )
 
   // ── 取内容 ────────────────────────────────────────────────────────────────
-  ctx.tools.register(
+  register(
     tool({
       name: 'pdf_read',
       description:
@@ -181,13 +190,13 @@ export function apply(ctx) {
           },
           dpi: { type: 'number', description: 'render 模式的 DPI，默认 200；小字号公式用 300' },
           max_chars: { type: 'number', description: '文本输出上限，默认 60000 字符' },
-          root: { type: 'string', description: '项目根目录，默认进程工作目录' },
+          root: { type: 'string', description: '项目根目录，默认会话工作区' },
         },
         required: ['path'],
       },
       presentTitle: '读取 PDF 内容',
-      async execute(args) {
-        const root = args.root ?? process.cwd()
+      async execute(args, exec) {
+        const root = rootOf(args, exec)
         const pdf = resolvePdf(root, args.path)
         if (!existsSync(pdf)) throw new Error(`文件不存在：${pdf}`)
         const mode = args.mode ?? 'markdown'

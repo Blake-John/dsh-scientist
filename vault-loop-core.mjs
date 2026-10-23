@@ -14,6 +14,8 @@
 //   contains-any:<path>:<a>|<b> 文件包含任一子串（忽略大小写）
 //   markdown-table:<path>       至少一张 Markdown 表格（表头 + 分隔行）
 //   min-citations:<path>:<n>    文件里不同 citekey 数量 ≥ n
+//   min-citekeys:<path>:<n>     表格 citekey 列里不同 citekey 数量 ≥ n
+//   min-links:<path>:<n>        文件里不同 http(s) URL 数量 ≥ n
 //   bib-entry:<key>             literature/references.bib 有该条目
 //   citations-bib:<path>        该文件引用的 citekey 都能在 bib 里找到（只扫该文件）
 //   paper-note:<a>|<b>          notes 下有本次新建/更新的笔记，章节有内容且 bib 有条目
@@ -38,6 +40,7 @@ import {
   writeJsonAtomic,
 } from './vault-core.mjs'
 import { projectLayout } from './project-layout.mjs'
+import { completeStageForLoop } from './vault-survey.mjs'
 
 const run = promisify(execFile)
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -181,8 +184,18 @@ export async function createLoop(root, spec) {
       closedAt: null,
       failReason: null,
       skill: spec.skill ?? null,
+      // 分阶段调研：{ slug, stage }；普通命令为 null
+      survey: spec.survey ?? null,
     }
     await writeJsonAtomic(join(dir, `${id}.json`), loop)
+    return loop
+  })
+}
+
+/** 创建阶段 loop 后再挂 survey 元数据；避免阶段校验失败时误回写状态 */
+export async function setLoopSurvey(root, id, survey) {
+  return await mutateLoop(root, id, (loop) => {
+    loop.survey = survey ?? null
     return loop
   })
 }
@@ -228,23 +241,29 @@ export async function bumpNudge(root, id) {
 
 /** 拦停超限：置 stalled 并放行（enforcement 用） */
 export async function stallLoop(root, id, reason = '拦停次数超限') {
-  return await mutateLoop(root, id, (loop) => {
+  const stalled = await mutateLoop(root, id, (loop) => {
     if (loop.status !== 'running') return loop
     loop.status = 'stalled'
     loop.stalledAt = nowISO()
     loop.stallReason = reason
     return loop
   })
+  if (stalled.status === 'stalled') {
+    await completeStageForLoop(root, stalled, { ok: false, reason: `stalled: ${reason}` }).catch(() => {})
+  }
+  return stalled
 }
 
 export async function abortLoop(root, id, reason = '') {
-  return await mutateLoop(root, id, (loop) => {
+  const aborted = await mutateLoop(root, id, (loop) => {
     if (loop.status === 'closed') throw vaultErr('ERR_LOOP_CLOSED', `loop ${id} 已完成，无需中止`)
     loop.status = 'aborted'
     loop.closedAt = nowISO()
     loop.failReason = reason || '用户中止'
     return loop
   })
+  await completeStageForLoop(root, aborted, { ok: false, reason: `aborted: ${aborted.failReason}` }).catch(() => {})
+  return aborted
 }
 
 // ── 出口校验 ────────────────────────────────────────────────────────────────
@@ -277,6 +296,25 @@ async function citationKeys(file) {
 
 async function countCitations(file) {
   return (await citationKeys(file)).size
+}
+
+// 表格里的 citekey：papers.md / candidates.md 的 citekey 列不写 [@key]，
+// 如果只用 min-citations 会误判。这里按“含 4 位年份的 key 形状”识别表格单元格。
+const TABLE_KEY_RE = /^[A-Za-z][A-Za-z0-9:_-]*\d{4}[A-Za-z0-9:_-]*$/
+
+function tableKeys(text) {
+  const keys = new Set()
+  for (const line of String(text).split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) continue
+    const cells = line.split('|').slice(1, -1).map((cell) => cell.trim())
+    if (!cells.length) continue
+    if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue
+    for (const cell of cells) {
+      const clean = cell.replace(/^\[@/, '').replace(/\]$/, '').replace(/^@/, '').trim()
+      if (TABLE_KEY_RE.test(clean)) keys.add(clean)
+    }
+  }
+  return keys
 }
 
 async function runCiteCheck(root, deep) {
@@ -398,6 +436,24 @@ export async function runCheck(root, loop, spec) {
       const count = await countCitations(file)
       return count >= n ? null : `引用不足：需要 ≥${n} 条，实际 ${count} 条`
     }
+    case 'min-citekeys': {
+      const [path, n] = [rest[0], Number(rest[1])]
+      const file = rel(path)
+      if (!(await stat(file).catch(() => null))?.isFile()) return `缺产物：${path}`
+      const text = await readFile(file, 'utf8').catch(() => '')
+      const count = tableKeys(text).size
+      return count >= n ? null : `citekey 不足：需要 ≥${n} 个，实际 ${count} 个（检查表格 citekey 列）`
+    }
+    case 'min-links': {
+      const [path, n] = [rest[0], Number(rest[1])]
+      const file = rel(path)
+      if (!(await stat(file).catch(() => null))?.isFile()) return `缺产物：${path}`
+      const text = await readFile(file, 'utf8').catch(() => '')
+      const urls = new Set(
+        [...text.matchAll(/https?:\/\/[^\s)\]}>"'|]+/g)].map((match) => match[0].replace(/[.,;:]+$/, '')),
+      )
+      return urls.size >= n ? null : `链接不足：需要 ≥${n} 个不同 URL，实际 ${urls.size} 个`
+    }
     case 'bib-entry': {
       const key = rest.join(':')
       const paths = await projectLayout(root)
@@ -410,8 +466,14 @@ export async function runCheck(root, loop, spec) {
       const path = rest.join(':')
       const file = rel(path)
       if (!(await stat(file).catch(() => null))?.isFile()) return `缺产物：${path}`
-      const keys = await citationKeys(file)
-      if (!keys.size) return `${path} 里没有 key 式引用（[@key] 或 \\cite{key}）`
+      const text = await readFile(file, 'utf8').catch(() => '')
+      const keys = new Set(await citationKeys(file))
+      // 只有候选表/论文总述表的 citekey 列需要按表格解析；报告/landscape 的表格
+      // 可能含模型名/年份，避免误判成 citekey。
+      if (/^(candidates|papers)\.md$/i.test(basename(file))) {
+        for (const key of tableKeys(text)) keys.add(key)
+      }
+      if (!keys.size) return `${path} 里没有 citekey（[@key] 或表格 citekey 列）`
       const paths = await projectLayout(root)
       const bib = await readFile(join(root, paths.bib), 'utf8').catch(() => '')
       const missing = [...keys].filter((key) => !bibHasEntry(bib, key))
@@ -530,13 +592,15 @@ export async function closeLoop(root, id, { failed = false, reason = '' } = {}) 
   if (failed) {
     const text = String(reason ?? '').trim()
     if (!text) throw vaultErr('ERR_BAD_ARGS', '声明失败必须给 --reason（说明为什么做不成）')
-    return await mutateLoop(root, id, (target) => {
+    const closed = await mutateLoop(root, id, (target) => {
       target.status = 'failed'
       target.closedAt = nowISO()
       target.failReason = text
       target.exit.done = false
       return target
     })
+    await completeStageForLoop(root, closed, { ok: false, reason: text }).catch(() => {})
+    return closed
   }
 
   await clearSuspension(root)
@@ -549,13 +613,15 @@ export async function closeLoop(root, id, { failed = false, reason = '' } = {}) 
     throw vaultErr('ERR_EXIT_UNMET', `出口契约未满足（loop 保持 running）：\n  · ${failures.join('\n  · ')}`, { failures })
   }
 
-  return await mutateLoop(root, id, (target) => {
+  const closed = await mutateLoop(root, id, (target) => {
     target.status = 'closed'
     target.closedAt = nowISO()
     target.exit.done = true
     target.exit.lastFailure = null
     return target
   })
+  await completeStageForLoop(root, closed, { ok: true }).catch(() => {})
+  return closed
 }
 
 // ── 契约翻译（给模型看的具体要求）─────────────────────────────────────────
@@ -581,6 +647,8 @@ export function describeRequirement(spec) {
       return `笔记目录下有本次新建或更新的笔记（${labels.join('、')} 三节有实质内容），且对应 references.bib 条目`
     }
     case 'min-citations': return `\`${rest[0]}\` 至少 ${rest[1]} 条编号引用`
+    case 'min-citekeys': return `\`${rest[0]}\` 表格 citekey 列至少 ${rest[1]} 个不同 citekey`
+    case 'min-links': return `\`${rest[0]}\` 至少 ${rest[1]} 个不同 URL（网络来源）`
     case 'bib-entry': return `references.bib 里有 \`${rest.join(':')}\` 条目`
     case 'executable': return `\`${rest.join(':')}\` 是可执行脚本`
     case 'cite-check': return 'cite-check 无错误'

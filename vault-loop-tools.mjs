@@ -10,8 +10,10 @@
 //
 // 查询类操作（list/show）不单独给工具：/status 命令与 pre-step 提醒已经覆盖。
 
-import { optStr, resolveRoot, vaultErr } from './vault-core.mjs'
+import { bindAgentCwd, optStr, resolveRoot, vaultErr } from './vault-core.mjs'
 import { closeLoop, listLoops, noteLoop, readLoop, renderLoop, resumeLoop, verifyExit } from './vault-loop-core.mjs'
+import { projectLayout } from './project-layout.mjs'
+import { getSurveyState, nextStage, stageCommand } from './vault-survey.mjs'
 
 export const name = 'dsh-scientist-vault-loop-tools'
 export const inject = ['tools']
@@ -45,8 +47,21 @@ async function resolveLoop(root, id) {
   throw vaultErr('ERR_NOT_FOUND', '当前没有进行中或卡住的 loop')
 }
 
+/** 分阶段调研：关闭一个阶段后告诉模型下一步 */
+async function surveyNextLine(root, loop) {
+  if (!loop?.survey?.slug) return null
+  const paths = await projectLayout(root)
+  const state = await getSurveyState(root, paths, loop.survey.slug, loop.arg)
+  const next = nextStage(state)
+  if (!next) return '调研阶段全部完成。'
+  const info = state?.stages?.[next] ?? {}
+  if (info.status === 'running') return `当前阶段 ${next} 进行中（loop ${info.loopId ?? '?'}）。`
+  if (info.status === 'failed') return `下一阶段：/${stageCommand(next)} "${loop.arg}"（重试上一次失败）`
+  return `下一阶段：/${stageCommand(next)} "${loop.arg}"（或 /survey "${loop.arg}" --next）`
+}
+
 async function cmdNote(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const loop = await resolveLoop(root, optStr(args, 'loop_id'))
   const note = optStr(args, 'note')
   if (!note) throw vaultErr('ERR_BAD_ARGS', 'note 不能为空')
@@ -57,7 +72,7 @@ async function cmdNote(args, exec) {
 }
 
 async function cmdClose(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const loop = await resolveLoop(root, optStr(args, 'loop_id'))
   const failed = args.failed === true
   const reason = optStr(args, 'reason')
@@ -65,7 +80,10 @@ async function cmdClose(args, exec) {
   try {
     const closed = await closeLoop(root, loop.id, { failed, reason })
     if (closed.status === 'closed') {
-      return [`✓ loop ${closed.id} 已关闭（完成）`, `  产物校验通过 · work ${closed.work.length} 条`].join('\n')
+      const lines = [`✓ loop ${closed.id} 已关闭（完成）`, `  产物校验通过 · work ${closed.work.length} 条`]
+      const next = await surveyNextLine(root, closed).catch(() => null)
+      if (next) lines.push(`  ${next}`)
+      return lines.join('\n')
     }
     return [`✓ loop ${closed.id} 已标记为「未完成」`, `  原因：${closed.failReason}`].join('\n')
   } catch (error) {
@@ -82,7 +100,7 @@ async function cmdClose(args, exec) {
 }
 
 async function cmdStatus(args, exec) {
-  const root = await resolveRoot(optStr(args, 'root', exec?.cwd))
+  const root = await resolveRoot(optStr(args, 'root', exec?.cwd), exec?.cwd)
   const id = optStr(args, 'loop_id')
   if (args.resume) {
     const loop = await resolveLoop(root, id)
@@ -91,7 +109,10 @@ async function cmdStatus(args, exec) {
   if (id) {
     const loop = await readLoop(root, id)
     const { ok, failures } = await verifyExit(root, loop)
-    return `${renderLoop(loop)}\n\n出口契约：${ok ? '已满足（可 close）' : `未满足\n  · ${failures.join('\n  · ')}`}`
+    const lines = [`${renderLoop(loop)}\n\n出口契约：${ok ? '已满足（可 close）' : `未满足\n  · ${failures.join('\n  · ')}`}`]
+    const next = await surveyNextLine(root, loop).catch(() => null)
+    if (next) lines.push('', next)
+    return lines.join('\n')
   }
   const loops = await listLoops(root)
   if (!loops.length) return '（没有 loop）'
@@ -99,7 +120,8 @@ async function cmdStatus(args, exec) {
 }
 
 export function apply(ctx) {
-  ctx.tools.register(
+  const register = (def) => ctx.tools.register(bindAgentCwd(ctx, def))
+  register(
     tool({
       name: 'loop_note',
       description:
@@ -120,7 +142,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'loop_close',
       description:
@@ -141,7 +163,7 @@ export function apply(ctx) {
     }),
   )
 
-  ctx.tools.register(
+  register(
     tool({
       name: 'loop_status',
       description:
