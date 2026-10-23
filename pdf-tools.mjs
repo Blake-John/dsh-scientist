@@ -58,13 +58,39 @@ const hasBinary = async (bin) => {
   }
 }
 
+/**
+ * 从可能混入库日志的 stdout 里取出 JSON。
+ * 优先整体解析；否则从后往前找第一行能解析的 `{...}`。
+ * （Python 侧已把库日志导到 stderr，这里是第二道保险。）
+ */
+const parseJsonOutput = (raw) => {
+  const text = String(raw ?? '').trim()
+  if (!text) throw new Error('空输出')
+  try {
+    return JSON.parse(text)
+  } catch {
+    /* 继续按行找 */
+  }
+  const lines = text.split(/\r?\n/)
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim()
+    if (!line.startsWith('{')) continue
+    try {
+      return JSON.parse(line)
+    } catch {
+      /* 不是这一行 */
+    }
+  }
+  throw new Error(`输出不是 JSON：${text.slice(0, 120)}`)
+}
+
 async function runExtractor(command, pdfPath, extraArgs = []) {
   try {
     const { stdout } = await run('python3', [EXTRACTOR, command, pdfPath, ...extraArgs], {
       timeout: 180000,
       maxBuffer: 64 * 1024 * 1024,
     })
-    const parsed = JSON.parse(stdout)
+    const parsed = parseJsonOutput(stdout)
     if (parsed.error) throw new Error(`${parsed.error}: ${parsed.message}`)
     return parsed
   } catch (error) {
@@ -72,12 +98,13 @@ async function runExtractor(command, pdfPath, extraArgs = []) {
       throw new Error('缺少 python3；PDF 工具需要 PyMuPDF：python3 -m pip install --user pymupdf pymupdf4llm')
     }
     if (error.stdout) {
+      let parsed = null
       try {
-        const parsed = JSON.parse(error.stdout)
-        if (parsed.error) throw new Error(`${parsed.error}: ${parsed.message}`)
+        parsed = parseJsonOutput(error.stdout)
       } catch {
         /* 不是 JSON，走下面的通用错误 */
       }
+      if (parsed?.error) throw new Error(`${parsed.error}: ${parsed.message}`)
     }
     throw new Error(`PDF 处理失败：${error.message}`)
   }

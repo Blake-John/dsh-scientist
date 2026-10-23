@@ -11,9 +11,19 @@
 import json
 import sys
 
+# 真正的 stdout 只留给 JSON。PyMuPDF / pymupdf4llm / pdfplumber 会往 stdout
+# 打日志（例如没有 tessdata 时的 "OCR disabled because ..."），一旦混进来，
+# Node 侧 JSON.parse 就会失败。库的输出统一改到 stderr。
+_STDOUT = sys.stdout
+
+
+def emit(payload: dict) -> None:
+    _STDOUT.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    _STDOUT.flush()
+
 
 def fail(code: str, message: str) -> None:
-    print(json.dumps({"error": code, "message": message}, ensure_ascii=False))
+    emit({"error": code, "message": message})
     sys.exit(0)
 
 
@@ -116,7 +126,7 @@ def cmd_outline(path: str) -> None:
         "emptyTextPages": [p["page"] for p in pages if not p["hasText"]][:20],
     }
     doc.close()
-    print(json.dumps(result, ensure_ascii=False))
+    emit(result)
 
 
 def cmd_markdown(path: str, pages_raw: str | None, image_dir: str | None) -> None:
@@ -145,7 +155,7 @@ def cmd_markdown(path: str, pages_raw: str | None, image_dir: str | None) -> Non
         import os
 
         images = sorted(os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.lower().endswith(".png"))
-    print(json.dumps({"pages": pages, "markdown": markdown, "images": images}, ensure_ascii=False))
+    emit({"pages": pages, "markdown": markdown, "images": images})
 
 
 def cmd_tables(path: str, pages_raw: str | None) -> None:
@@ -270,7 +280,7 @@ def cmd_tables(path: str, pages_raw: str | None) -> None:
                 )
     except Exception as exc:  # noqa: BLE001
         fail("extract_failed", f"pdfplumber 抽表失败：{exc}")
-    print(json.dumps({"tables": out}, ensure_ascii=False))
+    emit({"tables": out})
 
 
 def cmd_text(path: str, first: int | None, last: int | None) -> None:
@@ -286,10 +296,12 @@ def cmd_text(path: str, first: int | None, last: int | None) -> None:
         page = doc.load_page(index)
         chunks.append(f"\n\n--- p.{index + 1} ---\n" + page.get_text("text").strip())
     doc.close()
-    print(json.dumps({"text": "".join(chunks), "first": start + 1, "last": end}, ensure_ascii=False))
+    emit({"text": "".join(chunks), "first": start + 1, "last": end})
 
 
 def main() -> None:
+    # 库日志一律去 stderr；emit() 仍写真正的 stdout。
+    sys.stdout = sys.stderr
     if len(sys.argv) < 3:
         fail("bad_usage", "用法：pdf-extract.py outline|markdown|text <pdf> [--pages 1-5]")
     command, path = sys.argv[1], sys.argv[2]
